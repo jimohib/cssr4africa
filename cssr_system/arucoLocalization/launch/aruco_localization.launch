@@ -1,0 +1,20 @@
+<launch>
+  <!-- start RealSense -->
+  <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+    <arg name="enable_color" value="true"/>
+  </include>
+
+  <node pkg="cssr_system"
+        type="arucoLocalization"
+        name="arucoLocalization"
+        output="screen">
+    <!-- load your params -->
+    <rosparam file="$(find cssr_system)/arucoLocalization/config/aruco_params.yaml"
+              command="load"/>
+
+    <!-- *** IMPORTANT REMAPS *** -->
+    <remap from="image"       to="/camera/color/image_raw"/>
+    <remap from="camera_info" to="/camera/color/camera_info"/>
+    <remap from="odom"        to="/naoqi_driver/odom"/>
+  </node>
+</launch>

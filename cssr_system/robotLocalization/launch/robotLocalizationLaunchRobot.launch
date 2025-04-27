@@ -1,0 +1,14 @@
+<launch>
+    <!-- Start the RealSense camera -->
+    <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+        <arg name="enable_color" value="true"/>
+    </include>
+
+    <!-- Run the robot localization node -->
+    <node name="robotLocalization" pkg="cssr_system" type="robotLocalization" output="screen">
+        <!-- Pass parameters -->
+        <param name="initial_x" value="1.0" />
+        <param name="initial_y" value="2.0" />
+        <param name="initial_theta" value="90.0" />
+    </node>
+</launch>

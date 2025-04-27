@@ -1,0 +1,406 @@
+[TESTING] ############ SENSORS ############
+
+[START TIME] 2024-07-03.16:32:27
+[TESTING] ---- BACK SONAR ----
+
+[MESSAGES] Printing back sonar data received.
+Frame id: SonarBack_frame
+Field of view: 0.523599
+Minimum range value: 0.25
+Maximum range value: 2.55
+Range value: 0.66
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- FRONT SONAR ----
+
+[MESSAGES] Printing front sonar data received.
+Frame id: SonarFront_frame
+Field of view: 0.523599
+Minimum range value: 0.25
+Maximum range value: 2.55
+Range value: 4.76
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- BOTTOM CAMERA ----
+
+[MESSAGES] Printing bottom camera data information received.
+Image Width: 640
+Image Height: 480
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- FRONT CAMERA ----
+
+[MESSAGES] Printing front camera data information received.
+Image Width: 640
+Image Height: 480
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- DEPTH CAMERA ----
+
+[MESSAGES] Printing depth camera data information received.
+Image Width: 640
+Image Height: 360
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- STEREO CAMERA ----
+
+[MESSAGES] Printing stereo camera data information received.
+Image Width: 640
+Image Height: 180
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- LASER SENSOR ----
+
+[MESSAGES] Printing laser sensor data received.
+Frame id: base_footprint
+Start angle of the scan: -2.0944
+End angle of the scan: 2.0944
+Angular distance between measurements: 0.0686688
+Time between measurements: 0
+Time between scans: 0
+Minimum range value: 0.1
+Maximum range value: 3
+Range data: (size: 61) 
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- JOINT STATE ----
+
+[MESSAGES] Printing joint state data received.
+Header: seq: 1062
+stamp: 1720017308.204436451
+frame_id: 
+
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- ODOMETRY ----
+
+[MESSAGES] Printing odometry data received.
+Header: seq: 0
+stamp: 1720017319.478408967
+frame_id: odom
+
+Child frame id: base_link
+Pose: pose: 
+  position: 
+    x: -0.0254436
+    y: 0.00194847
+    z: 0.754313
+  orientation: 
+    x: -8.74661e-06
+    y: 0.260803
+    z: 0.00765489
+    w: 0.965362
+covariance[]
+  covariance[0]: 0
+  covariance[1]: 0
+  covariance[2]: 0
+  covariance[3]: 0
+  covariance[4]: 0
+  covariance[5]: 0
+  covariance[6]: 0
+  covariance[7]: 0
+  covariance[8]: 0
+  covariance[9]: 0
+  covariance[10]: 0
+  covariance[11]: 0
+  covariance[12]: 0
+  covariance[13]: 0
+  covariance[14]: 0
+  covariance[15]: 0
+  covariance[16]: 0
+  covariance[17]: 0
+  covariance[18]: 0
+  covariance[19]: 0
+  covariance[20]: 0
+  covariance[21]: 0
+  covariance[22]: 0
+  covariance[23]: 0
+  covariance[24]: 0
+  covariance[25]: 0
+  covariance[26]: 0
+  covariance[27]: 0
+  covariance[28]: 0
+  covariance[29]: 0
+  covariance[30]: 0
+  covariance[31]: 0
+  covariance[32]: 0
+  covariance[33]: 0
+  covariance[34]: 0
+  covariance[35]: 0
+
+Twist: twist: 
+  linear: 
+    x: 0
+    y: 0
+    z: 0
+  angular: 
+    x: 0
+    y: 0
+    z: 1.80829e-07
+covariance[]
+  covariance[0]: 0
+  covariance[1]: 0
+  covariance[2]: 0
+  covariance[3]: 0
+  covariance[4]: 0
+  covariance[5]: 0
+  covariance[6]: 0
+  covariance[7]: 0
+  covariance[8]: 0
+  covariance[9]: 0
+  covariance[10]: 0
+  covariance[11]: 0
+  covariance[12]: 0
+  covariance[13]: 0
+  covariance[14]: 0
+  covariance[15]: 0
+  covariance[16]: 0
+  covariance[17]: 0
+  covariance[18]: 0
+  covariance[19]: 0
+  covariance[20]: 0
+  covariance[21]: 0
+  covariance[22]: 0
+  covariance[23]: 0
+  covariance[24]: 0
+  covariance[25]: 0
+  covariance[26]: 0
+  covariance[27]: 0
+  covariance[28]: 0
+  covariance[29]: 0
+  covariance[30]: 0
+  covariance[31]: 0
+  covariance[32]: 0
+  covariance[33]: 0
+  covariance[34]: 0
+  covariance[35]: 0
+
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- IMU ----
+
+[MESSAGES] Printing IMU data received.
+Header: seq: 0
+stamp: 1720017330.915146351
+frame_id: base_footprint
+
+Orientation: x: 0.00151764
+y: -0.00776899
+z: -0.00209724
+w: 0.999966
+
+Angular velocity: x: -0.00292948
+y: -0.00399474
+z: 0
+
+Linear acceleration: x: -0.316143
+y: -0.210762
+z: -9.97286
+
+[END MESSAGES] Finished printing.
+
+[END TIME] 2024-07-03.16:35:42
+
+[TESTING] ############ SENSORS ############
+
+[START TIME] 2024-07-03.16:36:51
+[TESTING] ---- BACK SONAR ----
+
+[MESSAGES] Printing back sonar data received.
+Frame id: SonarBack_frame
+Field of view: 0.523599
+Minimum range value: 0.25
+Maximum range value: 2.55
+Range value: 0.66
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- FRONT SONAR ----
+
+[MESSAGES] Printing front sonar data received.
+Frame id: SonarFront_frame
+Field of view: 0.523599
+Minimum range value: 0.25
+Maximum range value: 2.55
+Range value: 4.77
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- BOTTOM CAMERA ----
+
+[MESSAGES] Printing bottom camera data information received.
+Image Width: 640
+Image Height: 480
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- FRONT CAMERA ----
+
+[MESSAGES] Printing front camera data information received.
+Image Width: 640
+Image Height: 480
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- DEPTH CAMERA ----
+
+[MESSAGES] Printing depth camera data information received.
+Image Width: 640
+Image Height: 360
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- STEREO CAMERA ----
+
+[MESSAGES] Printing stereo camera data information received.
+Image Width: 640
+Image Height: 180
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- LASER SENSOR ----
+
+[MESSAGES] Printing laser sensor data received.
+Frame id: base_footprint
+Start angle of the scan: -2.0944
+End angle of the scan: 2.0944
+Angular distance between measurements: 0.0686688
+Time between measurements: 0
+Time between scans: 0
+Minimum range value: 0.1
+Maximum range value: 3
+Range data: (size: 61) 
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- JOINT STATE ----
+
+[MESSAGES] Printing joint state data received.
+Header: seq: 2120
+stamp: 1720017571.999766912
+frame_id: 
+
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- ODOMETRY ----
+
+[MESSAGES] Printing odometry data received.
+Header: seq: 0
+stamp: 1720017583.197311334
+frame_id: odom
+
+Child frame id: base_link
+Pose: pose: 
+  position: 
+    x: -0.0299921
+    y: 0.00129643
+    z: 0.81911
+  orientation: 
+    x: 0.0048889
+    y: -0.0329326
+    z: 0.00893073
+    w: 0.999406
+covariance[]
+  covariance[0]: 0
+  covariance[1]: 0
+  covariance[2]: 0
+  covariance[3]: 0
+  covariance[4]: 0
+  covariance[5]: 0
+  covariance[6]: 0
+  covariance[7]: 0
+  covariance[8]: 0
+  covariance[9]: 0
+  covariance[10]: 0
+  covariance[11]: 0
+  covariance[12]: 0
+  covariance[13]: 0
+  covariance[14]: 0
+  covariance[15]: 0
+  covariance[16]: 0
+  covariance[17]: 0
+  covariance[18]: 0
+  covariance[19]: 0
+  covariance[20]: 0
+  covariance[21]: 0
+  covariance[22]: 0
+  covariance[23]: 0
+  covariance[24]: 0
+  covariance[25]: 0
+  covariance[26]: 0
+  covariance[27]: 0
+  covariance[28]: 0
+  covariance[29]: 0
+  covariance[30]: 0
+  covariance[31]: 0
+  covariance[32]: 0
+  covariance[33]: 0
+  covariance[34]: 0
+  covariance[35]: 0
+
+Twist: twist: 
+  linear: 
+    x: 0
+    y: 0
+    z: 0
+  angular: 
+    x: 0
+    y: 0
+    z: -9.15858e-08
+covariance[]
+  covariance[0]: 0
+  covariance[1]: 0
+  covariance[2]: 0
+  covariance[3]: 0
+  covariance[4]: 0
+  covariance[5]: 0
+  covariance[6]: 0
+  covariance[7]: 0
+  covariance[8]: 0
+  covariance[9]: 0
+  covariance[10]: 0
+  covariance[11]: 0
+  covariance[12]: 0
+  covariance[13]: 0
+  covariance[14]: 0
+  covariance[15]: 0
+  covariance[16]: 0
+  covariance[17]: 0
+  covariance[18]: 0
+  covariance[19]: 0
+  covariance[20]: 0
+  covariance[21]: 0
+  covariance[22]: 0
+  covariance[23]: 0
+  covariance[24]: 0
+  covariance[25]: 0
+  covariance[26]: 0
+  covariance[27]: 0
+  covariance[28]: 0
+  covariance[29]: 0
+  covariance[30]: 0
+  covariance[31]: 0
+  covariance[32]: 0
+  covariance[33]: 0
+  covariance[34]: 0
+  covariance[35]: 0
+
+[END MESSAGES] Finished printing.
+
+[TESTING] ---- IMU ----
+
+[MESSAGES] Printing IMU data received.
+Header: seq: 0
+stamp: 1720017594.766091453
+frame_id: base_footprint
+
+Orientation: x: 0.00237785
+y: -0.00825069
+z: -0.00228112
+w: 0.999961
+
+Angular velocity: x: 0.000798948
+y: 0.00372843
+z: -0.00106526
+
+Linear acceleration: x: -0.316143
+y: -0.201182
+z: -9.93454
+
+[END MESSAGES] Finished printing.
+
+[END TIME] 2024-07-03.16:40:05
+

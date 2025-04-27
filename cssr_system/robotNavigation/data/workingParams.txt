@@ -1,0 +1,268 @@
+POSITION_TOLERANCE         0.30
+ANGLE_TOLERANCE_ORIENTING  0.10
+ANGLE_TOLERANCE_GOING      0.20
+POSITION_GAIN_DQ           0.5
+ANGLE_GAIN_DQ              0.5
+POSITION_GAIN_MIMO         0.35  
+ANGLE_GAIN_MIMO            0.30
+MIN_LINEAR_VELOCITY        0.03
+MAX_LINEAR_VELOCITY        0.3
+MIN_ANGULAR_VELOCITY       0.05
+MAX_ANGULAR_VELOCITY       1.0
+CLEARANCE                  0.3
+SHORTEST_PATH_ALGORITHM    BFS
+ROBOT_AVAILABLE            TRUE
+
+
+
+POSITION_TOLERANCE         0.20
+ANGLE_TOLERANCE_ORIENTING  0.10
+ANGLE_TOLERANCE_GOING      0.20
+POSITION_GAIN_DQ           0.5
+ANGLE_GAIN_DQ              0.5
+POSITION_GAIN_MIMO         0.35  
+ANGLE_GAIN_MIMO            0.30
+MIN_LINEAR_VELOCITY        0.03
+MAX_LINEAR_VELOCITY        0.25
+MIN_ANGULAR_VELOCITY       0.05
+MAX_ANGULAR_VELOCITY       1.0
+CLEARANCE                  0.3
+SHORTEST_PATH_ALGORITHM    BFS
+ROBOT_AVAILABLE            TRUE
+
+POSITION_TOLERANCE         0.20
+ANGLE_TOLERANCE_ORIENTING  0.10
+ANGLE_TOLERANCE_GOING      0.15
+POSITION_GAIN_DQ           0.5
+ANGLE_GAIN_DQ              0.5
+POSITION_GAIN_MIMO         0.35  
+ANGLE_GAIN_MIMO            0.30
+MIN_LINEAR_VELOCITY        0.03
+MAX_LINEAR_VELOCITY        0.25
+MIN_ANGULAR_VELOCITY       0.05
+MAX_ANGULAR_VELOCITY       1.0
+CLEARANCE                  0.3
+SHORTEST_PATH_ALGORITHM    BFS
+ROBOT_AVAILABLE            TRUE
+
+
+POSITION_TOLERANCE         0.20
+POSITION_TOLERANCE_GOAL    0.20
+ANGLE_TOLERANCE_ORIENTING  0.05
+ANGLE_TOLERANCE_GOING      0.15
+POSITION_GAIN_DQ           0.5
+ANGLE_GAIN_DQ              0.5
+POSITION_GAIN_MIMO         0.35  
+ANGLE_GAIN_MIMO            0.30
+MIN_LINEAR_VELOCITY        0.03
+MAX_LINEAR_VELOCITY        0.25
+MIN_ANGULAR_VELOCITY       0.05
+MAX_ANGULAR_VELOCITY       1.0
+CLEARANCE                  0.3
+SHORTEST_PATH_ALGORITHM    BFS
+ROBOT_AVAILABLE            TRUE
+
+
+x			2.70356
+y			7.98268
+theta		3.22774
+
+
+POSITION_TOLERANCE         0.30
+POSITION_TOLERANCE_GOAL    0.20
+ANGLE_TOLERANCE_ORIENTING  0.05
+ANGLE_TOLERANCE_GOING      0.15
+POSITION_GAIN_DQ           0.5
+ANGLE_GAIN_DQ              0.5
+POSITION_GAIN_MIMO         0.35  
+ANGLE_GAIN_MIMO            0.30
+MIN_LINEAR_VELOCITY        0.03
+MAX_LINEAR_VELOCITY        0.30
+MIN_ANGULAR_VELOCITY       0.05
+MAX_ANGULAR_VELOCITY       1.0
+CLEARANCE                  0.3
+SHORTEST_PATH_ALGORITHM    BFS
+ROBOT_AVAILABLE            TRUE
+
+POSITION_TOLERANCE         0.15
+POSITION_TOLERANCE_GOAL    0.10
+ANGLE_TOLERANCE_ORIENTING  0.05
+ANGLE_TOLERANCE_GOING      0.15
+POSITION_GAIN_DQ           0.5
+ANGLE_GAIN_DQ              0.5
+POSITION_GAIN_MIMO         0.35  
+ANGLE_GAIN_MIMO            0.30
+MIN_LINEAR_VELOCITY        0.03
+MAX_LINEAR_VELOCITY        0.20
+MIN_ANGULAR_VELOCITY       0.05
+MAX_ANGULAR_VELOCITY       1.0
+CLEARANCE                  0.3
+SHORTEST_PATH_ALGORITHM    BFS
+ROBOT_AVAILABLE            TRUE
+
+header: 
+  seq: 652
+  stamp: 
+    secs: 1729587329
+    nsecs: 510787276
+  frame_id: "odom"
+child_frame_id: "base_link"
+pose: 
+  pose: 
+    position: 
+      x: 2.477299928665161
+      y: -4.6623053550720215
+      z: 0.8197543025016785
+    orientation: 
+      x: -0.01878704251728045
+      y: -0.006857185412661884
+      z: -0.9627091379061129
+      w: 0.26979833549104637
+  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+twist: 
+  twist: 
+    linear: 
+      x: 0.0
+      y: 0.0
+      z: 0.0
+    angular: 
+      x: 0.0
+      y: 0.0
+      z: 1.0146823825607498e-07
+  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+/rosout_agg
+Topic name: /rosout
+Topic name: /tf
+Topic name: /pepper_dcm/diagnostics
+Topic name: /pepper_dcm/stiffnesses
+Topic name: /joint_states
+Topic name: /pepper_dcm/RightArm_controller/state
+Topic name: /pepper_dcm/RightArm_controller/follow_joint_trajectory/result
+Topic name: /pepper_dcm/RightArm_controller/follow_joint_trajectory/feedback
+Topic name: /pepper_dcm/RightArm_controller/follow_joint_trajectory/status
+Topic name: /pepper_dcm/LeftArm_controller/state
+Topic name: /pepper_dcm/LeftArm_controller/follow_joint_trajectory/result
+Topic name: /pepper_dcm/LeftArm_controller/follow_joint_trajectory/feedback
+Topic name: /pepper_dcm/LeftArm_controller/follow_joint_trajectory/status
+Topic name: /pepper_dcm/RightHand_controller/state
+Topic name: /pepper_dcm/RightHand_controller/follow_joint_trajectory/result
+Topic name: /pepper_dcm/RightHand_controller/follow_joint_trajectory/feedback
+Topic name: /pepper_dcm/RightHand_controller/follow_joint_trajectory/status
+Topic name: /pepper_dcm/LeftHand_controller/state
+Topic name: /pepper_dcm/LeftHand_controller/follow_joint_trajectory/result
+Topic name: /pepper_dcm/LeftHand_controller/follow_joint_trajectory/feedback
+Topic name: /pepper_dcm/LeftHand_controller/follow_joint_trajectory/status
+Topic name: /pepper_dcm/Head_controller/state
+Topic name: /pepper_dcm/Head_controller/follow_joint_trajectory/result
+Topic name: /pepper_dcm/Head_controller/follow_joint_trajectory/feedback
+Topic name: /pepper_dcm/Head_controller/follow_joint_trajectory/status
+Topic name: /pepper_dcm/Pelvis_controller/state
+Topic name: /pepper_dcm/Pelvis_controller/follow_joint_trajectory/result
+Topic name: /pepper_dcm/Pelvis_controller/follow_joint_trajectory/feedback
+Topic name: /pepper_dcm/Pelvis_controller/follow_joint_trajectory/status
+Topic name: /naoqi_driver/audio
+Topic name: /naoqi_driver/camera/front/image_raw/compressed
+Topic name: /naoqi_driver/camera/front/image_raw/compressed/parameter_descriptions
+Topic name: /naoqi_driver/camera/front/image_raw/compressed/parameter_updates
+Topic name: /naoqi_driver/camera/front/image_raw
+Topic name: /naoqi_driver/camera/front/image_raw/theora
+Topic name: /naoqi_driver/camera/front/image_raw/theora/parameter_descriptions
+Topic name: /naoqi_driver/camera/front/image_raw/theora/parameter_updates
+Topic name: /naoqi_driver/camera/front/camera_info
+Topic name: /naoqi_driver/odom
+Topic name: /overtAttention/mode
+
+
+/cmd_vel
+/joint_angles
+/joint_states
+/move_base_simple/goal
+/naoqi_driver/audio
+/naoqi_driver/camera/front/camera_info
+/naoqi_driver/camera/front/image_raw
+/naoqi_driver/camera/front/image_raw/compressed
+/naoqi_driver/camera/front/image_raw/compressed/parameter_descriptions
+/naoqi_driver/camera/front/image_raw/compressed/parameter_updates
+/naoqi_driver/camera/front/image_raw/theora
+/naoqi_driver/camera/front/image_raw/theora/parameter_descriptions
+/naoqi_driver/camera/front/image_raw/theora/parameter_updates
+/naoqi_driver/odom
+/pepper_dcm/Head_controller/command
+/pepper_dcm/Head_controller/follow_joint_trajectory/cancel
+/pepper_dcm/Head_controller/follow_joint_trajectory/feedback
+/pepper_dcm/Head_controller/follow_joint_trajectory/goal
+/pepper_dcm/Head_controller/follow_joint_trajectory/result
+/pepper_dcm/Head_controller/follow_joint_trajectory/status
+/pepper_dcm/Head_controller/state
+/pepper_dcm/LeftArm_controller/command
+/pepper_dcm/LeftArm_controller/follow_joint_trajectory/cancel
+/pepper_dcm/LeftArm_controller/follow_joint_trajectory/feedback
+/pepper_dcm/LeftArm_controller/follow_joint_trajectory/goal
+/pepper_dcm/LeftArm_controller/follow_joint_trajectory/result
+/pepper_dcm/LeftArm_controller/follow_joint_trajectory/status
+/pepper_dcm/LeftArm_controller/state
+/pepper_dcm/LeftHand_controller/command
+/pepper_dcm/LeftHand_controller/follow_joint_trajectory/cancel
+/pepper_dcm/LeftHand_controller/follow_joint_trajectory/feedback
+/pepper_dcm/LeftHand_controller/follow_joint_trajectory/goal
+/pepper_dcm/LeftHand_controller/follow_joint_trajectory/result
+/pepper_dcm/LeftHand_controller/follow_joint_trajectory/status
+/pepper_dcm/LeftHand_controller/state
+/pepper_dcm/Pelvis_controller/command
+/pepper_dcm/Pelvis_controller/follow_joint_trajectory/cancel
+/pepper_dcm/Pelvis_controller/follow_joint_trajectory/feedback
+/pepper_dcm/Pelvis_controller/follow_joint_trajectory/goal
+/pepper_dcm/Pelvis_controller/follow_joint_trajectory/result
+/pepper_dcm/Pelvis_controller/follow_joint_trajectory/status
+/pepper_dcm/Pelvis_controller/state
+/pepper_dcm/RightArm_controller/command
+/pepper_dcm/RightArm_controller/follow_joint_trajectory/cancel
+/pepper_dcm/RightArm_controller/follow_joint_trajectory/feedback
+/pepper_dcm/RightArm_controller/follow_joint_trajectory/goal
+/pepper_dcm/RightArm_controller/follow_joint_trajectory/result
+/pepper_dcm/RightArm_controller/follow_joint_trajectory/status
+/pepper_dcm/RightArm_controller/state
+/pepper_dcm/RightHand_controller/command
+/pepper_dcm/RightHand_controller/follow_joint_trajectory/cancel
+/pepper_dcm/RightHand_controller/follow_joint_trajectory/feedback
+/pepper_dcm/RightHand_controller/follow_joint_trajectory/goal
+/pepper_dcm/RightHand_controller/follow_joint_trajectory/result
+/pepper_dcm/RightHand_controller/follow_joint_trajectory/status
+/pepper_dcm/RightHand_controller/state
+/pepper_dcm/cmd_moveto
+/pepper_dcm/diagnostics
+/pepper_dcm/stiffnesses
+/rosout
+/rosout_agg
+/speech
+/tf
+/tf_static
+
+
+  seq: 107
+  stamp: 
+    secs: 1729515762
+    nsecs: 503725341
+  frame_id: ''
+name: 
+  - HeadPitch
+  - HeadYaw
+  - HipPitch
+  - HipRoll
+  - KneePitch
+  - LElbowRoll
+  - LElbowYaw
+  - LHand
+  - LShoulderPitch
+  - LShoulderRoll
+  - LWristYaw
+  - RElbowRoll
+  - RElbowYaw
+  - RHand
+  - RShoulderPitch
+  - RShoulderRoll
+  - RWristYaw
+position: [0.4325826168060303, -0.013805866241455078, 0.007669925689697266, -0.018407821655273438, 0.0490872859954834, -0.4540584087371826, -1.2087767124176025, 0.48857641220092773, 1.5523885488510132, 0.13959217071533203, -0.15497589111328125, 0.44945645332336426, 1.2133787870407104, 0.49560630321502686, 1.5447185039520264, -0.1441941261291504, 0.1487560272216797]
+velocity: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+effort: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
