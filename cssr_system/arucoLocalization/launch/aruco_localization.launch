@@ -1,20 +1,37 @@
 <launch>
-  <!-- start RealSense -->
+  <!-- Start RealSense camera -->
   <include file="$(find realsense2_camera)/launch/rs_camera.launch">
-    <arg name="enable_color" value="true"/>
+    <arg name="align_depth" value="true"/>
+    <arg name="filters" value="pointcloud"/>
   </include>
 
-  <node pkg="cssr_system"
-        type="arucoLocalization"
-        name="arucoLocalization"
-        output="screen">
-    <!-- load your params -->
-    <rosparam file="$(find cssr_system)/arucoLocalization/config/aruco_params.yaml"
-              command="load"/>
+  <!-- TF transformation for camera mounting on Pepper -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="realsense_to_robcamera" 
+          args="-0.05 0.03 0.07 0 0 0 CameraTop_frame camera_link" />
 
-    <!-- *** IMPORTANT REMAPS *** -->
-    <remap from="image"       to="/camera/color/image_raw"/>
-    <remap from="camera_info" to="/camera/color/camera_info"/>
-    <remap from="odom"        to="/naoqi_driver/odom"/>
+  <!-- Based on your images, the camera is mounted on top of the head
+  <node pkg="tf2_ros" type="static_transform_publisher" name="camera_to_head" 
+        args="0.08 0.0 0.10 0 0 0 Head camera_link" /> -->
+
+  <!-- 2. Direct connection from base_link to camera as a fallback
+  <node pkg="tf2_ros" type="static_transform_publisher" name="base_to_camera" 
+        args="0.0 0.0 0.35 0 0 0 base_link camera_link" /> -->
+
+  <!-- Static transform from camera_link to camera_color_optical_frame -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="camera_optical_frame" 
+        args="0 0 0 -0.5 0 -0.5 camera_link camera_color_optical_frame" />
+
+  <!-- 3. Create a map frame if it doesn't exist -->
+ <node pkg="tf2_ros" type="static_transform_publisher" name="odom_to_map" args="3.1030710460719273 -7.818558293160004 0 0 0 0 odom map" />
+
+  <!-- ArUco localization node -->
+  <node pkg="cssr_system" type="arucoLocalization" name="arucoLocalization" output="screen">
+    <rosparam command="load" file="$(find cssr_system)/arucoLocalization/config/aruco_params.yaml" />
   </node>
+
+  <!-- Marker visualizer node -->
+  <node pkg="cssr_system" type="markerVisualizer" name="markerVisualizer" output="screen">
+    <rosparam command="load" file="$(find cssr_system)/arucoLocalization/config/aruco_params.yaml" />
+  </node>
+
 </launch>

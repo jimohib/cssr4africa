@@ -1,36 +1,59 @@
-# ArUco dictionary (e.g. 5 → DICT_5X5_100)
-marker_dictionary:       2
+# ArUco dictionary to use (1 for DICT_4X4_100)
+aruco_dictionary_id: 1
 
-# Physical marker side length (meters)
-marker_size:            0.20
+# ArUco marker size in meters (200mm = 0.2m)
+marker_size: 0.2
 
-# Complementary‐filter gain (how much to trust ArUco vs. odom)
-alpha:                  0.20
+# Camera calibration parameters from your RealSense
+camera_matrix: [911.6033325195312, 0.0, 655.0755615234375, 0.0, 910.8851318359375, 363.9165954589844, 0.0, 0.0, 1.0]
+dist_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
 
-# Minimum movement before publishing (meters)
-movement_threshold:     0.10
+# Frame IDs
+camera_frame: "camera_color_optical_frame"
+world_frame: "map"
+robot_base_frame: "base_link"
 
-# Minimum rotation before publishing (degrees)
-rotation_threshold_deg:  5.0
+# Known marker positions in world coordinates (x, y in meters, z is the height at 0.9m)
+markers:
+  "10": [6.6, 1.25, 1.68]
+  "15": [3.2, 3.8, 0.63]
+  "20": [3.8, 0.1, 1.42]
+  "25": [2.0, 0.02, 1.75]
+  "30": [2.0, 3.8, 0.63]
+  "35": [0.0, 2.4, 1.75]
+  "40": [0.0, 4.2, 1.75]
+  "45": [0.0, 6.0, 1.75]
+  "50": [0.0, 7.2, 1.75]
+  "55": [0.1, 9.84, 1.72]
+  "60": [2.0, 9.94, 0.90]
+  "65": [5.0, 9.94, 0.90]
+  "70": [6.6, 9.84, 1.72]
+  "75": [6.8, 7.2, 1.72]
+  "80": [6.8, 5.1, 1.72]
+  "85": [6.8, 3.0, 1.70]
+  
+# Camera-related parameters
+camera_topic: "/camera/color/image_raw"
 
-# Minimum time between updates (seconds)
-update_interval:        2.0
+# Filtering parameters
+filtering_method: "closest"  # Options: "average", "closest", "weighted"
+filter_smoothing_factor: 0.3  # Between 0 and 1, higher values respond faster to changes
 
-# Known world poses of each marker (x, y in meters; yaw in degrees)
-marker_positions:
-  - {id: 10, x:  6.60, y:  1.25, yaw:   90.0}
-  - {id: 15, x:  3.20, y:  3.85, yaw:   90.0}
-  - {id: 20, x:  3.80, y:  0.10, yaw:   90.0}
-  - {id: 25, x:  2.00, y:  0.02, yaw:   90.0}
-  - {id: 30, x:  2.00, y:  3.80, yaw:   90.0}
-  - {id: 35, x:  0.00, y:  2.40, yaw:    0.0}
-  - {id: 40, x:  0.00, y:  4.20, yaw:    0.0}
-  - {id: 45, x:  0.00, y:  6.00, yaw:    0.0}
-  - {id: 50, x:  0.00, y:  7.20, yaw:    0.0}
-  - {id: 55, x:  0.10, y:  9.84, yaw:  -90.0}
-  - {id: 60, x:  2.00, y:  9.94, yaw:  -90.0}
-  - {id: 65, x:  5.00, y:  9.94, yaw:  -90.0}
-  - {id: 70, x:  6.60, y:  9.84, yaw:  -90.0}
-  - {id: 75, x:  6.80, y:  7.20, yaw:  180.0}
-  - {id: 80, x:  6.80, y:  5.10, yaw:  180.0}
-  - {id: 85, x:  6.80, y:  3.00, yaw:  180.0}
+# Marker orientation information (in degrees around z-axis)
+marker_orientations:
+  "10": 90.0
+  "15": 90.0
+  "20": 90.0
+  "25": 90.0
+  "30": 90.0
+  "35": 0.0
+  "40": 0.0
+  "45": 0.0
+  "50": 0.0
+  "55": -90.0
+  "60": -90.0
+  "65": -90.0
+  "70": -90.0
+  "75": 180.0
+  "80": 180.0
+  "85": 180.0
