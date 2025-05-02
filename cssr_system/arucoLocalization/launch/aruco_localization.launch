@@ -1,4 +1,11 @@
 <launch>
+
+  <!-- Start RealSense camera -->
+  <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+    <arg name="align_depth" value="true"/>
+    <arg name="filters" value="pointcloud"/>
+  </include>
+
   <!-- Arguments -->
   <arg name="verbose" default="false" doc="Enable verbose mode with terminal output and visualization" />
   <arg name="config_file" default="$(find cssr_system)arucoLocalization/config/markers.yaml" doc="Path to marker configuration file" />

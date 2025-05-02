@@ -29,6 +29,8 @@ find_package(catkin REQUIRED COMPONENTS
 find_package(OpenCV REQUIRED)
 
 
+find_package(yaml-cpp REQUIRED)
+
 ################################################
 ## Declare ROS messages, services and actions ##
 ################################################
@@ -86,6 +88,7 @@ generate_messages(
 catkin_package(
   INCLUDE_DIRS robotLocalization robotNavigation arucoLocalization
   CATKIN_DEPENDS roscpp roslib std_msgs nav_msgs geometry_msgs sensor_msgs image_transport cv_bridge tf angles message_runtime
+  DEPENDS OpenCV yaml-cpp
 )
 
 
@@ -100,6 +103,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${aruco_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  ${YAML_CPP_INCLUDE_DIR}
   robotLocalization/include
   robotNavigation/include
   arucoLocalization/include

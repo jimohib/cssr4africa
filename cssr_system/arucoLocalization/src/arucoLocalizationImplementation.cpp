@@ -6,7 +6,7 @@
  * pose estimation (triangulation with visual landmarks).
  * 
  * This implementation uses ArUco markers as landmarks and includes
- * multiple detection methods (ArUco, SIFT, YOLO) for robustness.
+ * ArUco detection as the primary method with fallback to basic feature detection.
  */
 
  #include <ros/ros.h>
@@ -26,7 +26,6 @@
  #include <string>
  #include <mutex>
  #include <opencv2/features2d.hpp>
- #include <opencv2/xfeatures2d.hpp>
  #include <opencv2/dnn.hpp>
  #include <opencv2/aruco.hpp>
  #include <cmath>
@@ -84,7 +83,7 @@
      double marker_size_;
      
      // OpenCV and detection-related
-     cv::Ptr<cv::Feature2D> sift_detector_;
+     cv::Ptr<cv::Feature2D> feature_detector_;
      cv::dnn::Net yolo_net_;
      cv::Ptr<cv::aruco::Dictionary> aruco_dict_;
      cv::Ptr<cv::aruco::DetectorParameters> aruco_params_;
@@ -246,7 +245,7 @@
          *yc1 = (y1 + y2)/2 - delta_y;  
          
          *xc2 = (x1 + x2)/2 + delta_x; 
-         *yc2 = (y1 + y2)/2 + delta_y; 
+         *yc2 = (y1 + x2)/2 + delta_y; 
          
          // Sort them in order of increasing distance from the origin
          if ((*xc1 * *xc1 + *yc1 * *yc1) > (*xc2 * *xc2 + *yc2 * *yc2)) {
@@ -293,8 +292,8 @@
          // Setup subscribers and publishers based on topics file
          loadTopicsConfig();
          
-         // Initialize SIFT detector
-         sift_detector_ = cv::xfeatures2d::SIFT::create();
+         // Initialize feature detector (using ORB instead of SIFT)
+         feature_detector_ = cv::ORB::create();
          
          // Initialize YOLO network
          initializeYOLO();
@@ -660,9 +659,9 @@
              }
          }
          
-         // Alternative: Try SIFT detection if ArUco fails
+         // Alternative: Try basic feature detection if ArUco fails
          if (detected_ids.size() < 3 && (force_absolute_pose_ || detected_ids.empty())) {
-             detectLandmarksWithSIFT(rgb_image, display_frame);
+             detectFeaturesWithORB(rgb_image, display_frame);
          }
          
          // Alternative: Try YOLO detection if other methods fail
@@ -682,13 +681,10 @@
          }
      }
      
-     void detectLandmarksWithSIFT(const cv::Mat& frame, cv::Mat& display_frame) {
-         // This is a simplified implementation - in practice you would need reference
-         // images of your landmarks to match against
-         
-         // Detect keypoints
+     void detectFeaturesWithORB(const cv::Mat& frame, cv::Mat& display_frame) {
+         // Detect keypoints using ORB
          std::vector<cv::KeyPoint> keypoints;
-         sift_detector_->detect(frame, keypoints);
+         feature_detector_->detect(frame, keypoints);
          
          // Draw keypoints for visualization
          cv::drawKeypoints(display_frame, keypoints, display_frame, 
@@ -701,8 +697,13 @@
          // 4. Use the positions of the matched landmarks for triangulation
          
          if (verbose_mode_) {
-             ROS_INFO("SIFT detected %zu keypoints", keypoints.size());
+             ROS_INFO("ORB detector found %zu keypoints", keypoints.size());
          }
+         
+         // Add note on display frame
+         cv::putText(display_frame, "Using ORB features (ArUco markers not found)",
+                    cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.5, 
+                    cv::Scalar(0, 200, 200), 2);
      }
      
      void detectLandmarksWithYOLO(const cv::Mat& frame, cv::Mat& display_frame) {
@@ -780,12 +781,22 @@
                         cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
              }
              
+             // Add note on display frame
+             cv::putText(display_frame, "Using YOLO detection (ArUco markers not found)",
+                        cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.5, 
+                        cv::Scalar(0, 0, 255), 2);
+             
              if (verbose_mode_) {
                  ROS_INFO("YOLO detected %zu objects", indices.size());
              }
              
          } catch (const cv::Exception& e) {
              ROS_ERROR("YOLO detection error: %s", e.what());
+             
+             // Add error message to display frame
+             cv::putText(display_frame, "YOLO detection failed: " + std::string(e.what()),
+                        cv::Point(10, 90), cv::FONT_HERSHEY_SIMPLEX, 0.5, 
+                        cv::Scalar(0, 0, 255), 2);
          }
      }
      
