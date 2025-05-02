@@ -1,20 +1,16 @@
 <launch>
-  <!-- start RealSense -->
-  <include file="$(find realsense2_camera)/launch/rs_camera.launch">
-    <arg name="enable_color" value="true"/>
-  </include>
+  <!-- Arguments -->
+  <arg name="verbose" default="false" />
+  <arg name="config_file" default="$(find robot_localization)/config/landmarks.yaml" />
+  <arg name="topics_file" default="$(find robot_localization)/config/topics.txt" />
 
-  <node pkg="cssr_system"
-        type="arucoLocalization"
-        name="arucoLocalization"
-        output="screen">
-    <!-- load your params -->
-    <rosparam file="$(find cssr_system)/arucoLocalization/config/aruco_params.yaml"
-              command="load"/>
-
-    <!-- *** IMPORTANT REMAPS *** -->
-    <remap from="image"       to="/camera/color/image_raw"/>
-    <remap from="camera_info" to="/camera/color/camera_info"/>
-    <remap from="odom"        to="/naoqi_driver/odom"/>
+  <!-- Launch the robot localization node -->
+  <node pkg="robot_localization" type="robot_localization_node" name="robot_localization" output="screen">
+    <param name="verbose" value="$(arg verbose)" />
+    <param name="config_file" value="$(arg config_file)" />
+    <param name="topics_file" value="$(arg topics_file)" />
   </node>
+  
+  <!-- Optional: Launch RViz for visualization -->
+  <node pkg="rviz" type="rviz" name="rviz" args="-d $(find robot_localization)/config/localization.rviz" if="$(arg verbose)" />
 </launch>
