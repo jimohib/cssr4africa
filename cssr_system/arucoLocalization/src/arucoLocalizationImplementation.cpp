@@ -129,6 +129,7 @@
          nh_.param<std::string>("imu_topic", imu_topic_, "/naoqi_driver/imu/base");
          nh_.param<std::string>("joint_states_topic", joint_states_topic_, "/joint_states");
          nh_.param<std::string>("pose_topic", pose_topic_, "/robotLocalization/pose");
+         nh_.param<std::string>("topics_file", topics_file_, "pepperTopics.dat");
          nh_.param<std::string>("landmarks_config", landmarks_config_file_, "landmarks.yaml");
          nh_.param<bool>("verbose", verbose_mode_, false);
          
