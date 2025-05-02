@@ -125,8 +125,8 @@
       */
      void initializeParameters() {
          nh_.param<std::string>("camera_topic", camera_topic_, "/camera/color/image_raw");
-         nh_.param<std::string>("odom_topic", odom_topic_, "/odom");
-         nh_.param<std::string>("imu_topic", imu_topic_, "/imu/data");
+         nh_.param<std::string>("odom_topic", odom_topic_, "/naoqi_driver/odom");
+         nh_.param<std::string>("imu_topic", imu_topic_, "/naoqi_driver/imu/base");
          nh_.param<std::string>("joint_states_topic", joint_states_topic_, "/joint_states");
          nh_.param<std::string>("pose_topic", pose_topic_, "/robotLocalization/pose");
          nh_.param<std::string>("landmarks_config", landmarks_config_file_, "landmarks.yaml");
