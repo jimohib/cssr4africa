@@ -1,0 +1,13 @@
+# Camera calibration parameters
+
+# Camera matrix (3x3) in row-major format
+camera_matrix: [911.6033325195312, 0.0, 655.0755615234375, 0.0, 910.8851318359375, 363.9165954589844, 0.0, 0.0, 1.0]
+
+# Distortion coefficients (k1, k2, p1, p2, k3)
+dist_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
+
+# ArUco marker size in meters
+marker_size: 0.2
+
+# ArUco dictionary to use
+aruco_dictionary: DICT_4X4_100

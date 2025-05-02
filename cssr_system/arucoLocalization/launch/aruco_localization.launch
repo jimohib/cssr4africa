@@ -1,16 +1,15 @@
 <launch>
   <!-- Arguments -->
-  <arg name="verbose" default="false" />
-  <arg name="config_file" default="$(find robot_localization)/config/landmarks.yaml" />
-  <arg name="topics_file" default="$(find robot_localization)/config/topics.txt" />
+  <arg name="verbose" default="false" doc="Enable verbose mode with terminal output and visualization" />
+  <arg name="config_file" default="$(find cssr_system)arucoLocalization/config/markers.yaml" doc="Path to marker configuration file" />
+  <arg name="topics_file" default="$(find cssr_system)arucoLocalization/data/pepperTopics.dat" doc="Path to topic configuration file" />
+  <arg name="camera_params_file" default="$(find cssr_system)arucoLocalization/config/camera_calibration.yaml" doc="Path to camera calibration file" />
 
   <!-- Launch the robot localization node -->
-  <node pkg="robot_localization" type="robot_localization_node" name="robot_localization" output="screen">
+  <node pkg="cssr_system" type="arucoLocalization" name="arucoLocalization" output="screen">
     <param name="verbose" value="$(arg verbose)" />
     <param name="config_file" value="$(arg config_file)" />
     <param name="topics_file" value="$(arg topics_file)" />
+    <param name="camera_params_file" value="$(arg camera_params_file)" />
   </node>
-  
-  <!-- Optional: Launch RViz for visualization -->
-  <node pkg="rviz" type="rviz" name="rviz" args="-d $(find robot_localization)/config/localization.rviz" if="$(arg verbose)" />
 </launch>
