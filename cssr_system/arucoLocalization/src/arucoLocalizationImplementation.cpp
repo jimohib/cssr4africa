@@ -55,6 +55,7 @@
      std::string imu_topic_;
      std::string joint_states_topic_;
      std::string pose_topic_;
+     std::string topics_file_;
      std::string landmarks_config_file_;
      bool verbose_mode_;
      
@@ -75,7 +76,7 @@
      cv::Mat dist_coeffs_;
      
      // SIFT detector
-     cv::Ptr<cv::SIFT> sift_detector_;
+    //  cv::Ptr<cv::SIFT> sift_detector_;
  
  public:
      RobotLocalizationNode() : nh_("~") {
@@ -90,7 +91,7 @@
          aruco_params_ = cv::aruco::DetectorParameters::create();
          
          // Initialize SIFT detector
-         sift_detector_ = cv::SIFT::create();
+        //  sift_detector_ = cv::SIFT::create();
          
          // Initialize camera calibration parameters (these should be loaded from a calibration file)
          camera_matrix_ = cv::Mat::eye(3, 3, CV_64F);
@@ -141,32 +142,30 @@
       * Load topic names from configuration file
       */
      void loadTopicsFromConfigFile() {
-         std::string package_path = ros::package::getPath("robot_localization");
-         std::string config_path = package_path + "/config/topics.yaml";
+        //  std::string package_path = ros::package::getPath("robot_localization");
+        //  std::string config_path = package_path + "/config/topics.yaml";
          
-         try {
-             YAML::Node config = YAML::LoadFile(config_path);
+        //  try {
+        //      YAML::Node config = YAML::LoadFile(config_path);
              
-             if (config["camera_topic"]) {
-                 camera_topic_ = config["camera_topic"].as<std::string>();
-             }
-             if (config["odom_topic"]) {
-                 odom_topic_ = config["odom_topic"].as<std::string>();
-             }
-             if (config["imu_topic"]) {
-                 imu_topic_ = config["imu_topic"].as<std::string>();
-             }
-             if (config["joint_states_topic"]) {
-                 joint_states_topic_ = config["joint_states_topic"].as<std::string>();
-             }
+        //      if (config["camera_topic"]) {
+        //          camera_topic_ = config["camera_topic"].as<std::string>();
+        //      }
+        //      if (config["odom_topic"]) {
+        //          odom_topic_ = config["odom_topic"].as<std::string>();
+        //      }
+        //      if (config["imu_topic"]) {
+        //          imu_topic_ = config["imu_topic"].as<std::string>();
+        //      }
+        //      if (config["joint_states_topic"]) {
+        //          joint_states_topic_ = config["joint_states_topic"].as<std::string>();
+        //      }
              
-             ROS_INFO("Loaded topic configuration from file");
-         } catch (const std::exception& e) {
-             ROS_WARN("Failed to load topic configuration: %s", e.what());
-             ROS_WARN("Using default topic names");
-         }
-
-
+        //      ROS_INFO("Loaded topic configuration from file");
+        //  } catch (const std::exception& e) {
+        //      ROS_WARN("Failed to load topic configuration: %s", e.what());
+        //      ROS_WARN("Using default topic names");
+        //  }
 
          std::ifstream topics_file(topics_file_);
          if (!topics_file.is_open()) {
@@ -194,46 +193,13 @@
          }
          
          // Store topic names
-         front_camera_topic_ = topic_map["FrontCamera"];
-         stereo_camera_topic_ = topic_map["StereoCamera"];
-         rgb_realsense_topic_ = topic_map["RGBRealSense"];
-         depth_realsense_topic_ = topic_map["DepthRealSense"];
-         odometry_topic_ = topic_map["Odometry"];
+         camera_topic_ = topic_map["RGBRealSense"];
+         odom_topic_ = topic_map["Odometry"];
          imu_topic_ = topic_map["IMU"];
-         head_yaw_topic_ = topic_map["HeadYaw"];
-         
-         // Set up subscribers
-         if (!rgb_realsense_topic_.empty()) {
-             rgb_camera_sub_ = nh_.subscribe(rgb_realsense_topic_, 1, 
-                                            &RobotLocalizationNode::rgbCameraCallback, this);
-             ROS_INFO("Subscribed to RGB RealSense topic: %s", rgb_realsense_topic_.c_str());
-         }
-         
-         if (!depth_realsense_topic_.empty()) {
-             depth_camera_sub_ = nh_.subscribe(depth_realsense_topic_, 1, 
-                                              &RobotLocalizationNode::depthCameraCallback, this);
-             ROS_INFO("Subscribed to Depth RealSense topic: %s", depth_realsense_topic_.c_str());
-         }
-         
-         if (!odometry_topic_.empty()) {
-             odom_sub_ = nh_.subscribe(odometry_topic_, 10, 
-                                      &RobotLocalizationNode::odometryCallback, this);
-             ROS_INFO("Subscribed to odometry topic: %s", odometry_topic_.c_str());
-         }
-         
-         if (!imu_topic_.empty()) {
-             imu_sub_ = nh_.subscribe(imu_topic_, 10, 
-                                     &RobotLocalizationNode::imuCallback, this);
-             ROS_INFO("Subscribed to IMU topic: %s", imu_topic_.c_str());
-         }
-         
-         if (!head_yaw_topic_.empty()) {
-             joint_states_sub_ = nh_.subscribe(head_yaw_topic_, 10, 
-                                              &RobotLocalizationNode::jointStatesCallback, this);
-             ROS_INFO("Subscribed to joint states topic: %s", head_yaw_topic_.c_str());
-         }
-
-
+         joint_states_topic_ = topic_map["HeadYaw"];
+        //  front_camera_topic_ = topic_map["FrontCamera"];
+        //  stereo_camera_topic_ = topic_map["StereoCamera"];
+         //  depth_realsense_topic_ = topic_map["DepthRealSense"];
      }
      
      /**
