@@ -164,6 +164,75 @@
              ROS_WARN("Failed to load topic configuration: %s", e.what());
              ROS_WARN("Using default topic names");
          }
+
+
+
+         std::ifstream topics_file(topics_file_);
+         if (!topics_file.is_open()) {
+             ROS_ERROR("Could not open topics file: %s", topics_file_.c_str());
+             return;
+         }
+         
+         std::string line;
+         std::map<std::string, std::string> topic_map;
+         
+         while (std::getline(topics_file, line)) {
+             size_t delimiter_pos = line.find('=');
+             if (delimiter_pos != std::string::npos) {
+                 std::string key = line.substr(0, delimiter_pos);
+                 std::string value = line.substr(delimiter_pos + 1);
+                 
+                 // Trim whitespace
+                 key.erase(0, key.find_first_not_of(" \t"));
+                 key.erase(key.find_last_not_of(" \t") + 1);
+                 value.erase(0, value.find_first_not_of(" \t"));
+                 value.erase(value.find_last_not_of(" \t") + 1);
+                 
+                 topic_map[key] = value;
+             }
+         }
+         
+         // Store topic names
+         front_camera_topic_ = topic_map["FrontCamera"];
+         stereo_camera_topic_ = topic_map["StereoCamera"];
+         rgb_realsense_topic_ = topic_map["RGBRealSense"];
+         depth_realsense_topic_ = topic_map["DepthRealSense"];
+         odometry_topic_ = topic_map["Odometry"];
+         imu_topic_ = topic_map["IMU"];
+         head_yaw_topic_ = topic_map["HeadYaw"];
+         
+         // Set up subscribers
+         if (!rgb_realsense_topic_.empty()) {
+             rgb_camera_sub_ = nh_.subscribe(rgb_realsense_topic_, 1, 
+                                            &RobotLocalizationNode::rgbCameraCallback, this);
+             ROS_INFO("Subscribed to RGB RealSense topic: %s", rgb_realsense_topic_.c_str());
+         }
+         
+         if (!depth_realsense_topic_.empty()) {
+             depth_camera_sub_ = nh_.subscribe(depth_realsense_topic_, 1, 
+                                              &RobotLocalizationNode::depthCameraCallback, this);
+             ROS_INFO("Subscribed to Depth RealSense topic: %s", depth_realsense_topic_.c_str());
+         }
+         
+         if (!odometry_topic_.empty()) {
+             odom_sub_ = nh_.subscribe(odometry_topic_, 10, 
+                                      &RobotLocalizationNode::odometryCallback, this);
+             ROS_INFO("Subscribed to odometry topic: %s", odometry_topic_.c_str());
+         }
+         
+         if (!imu_topic_.empty()) {
+             imu_sub_ = nh_.subscribe(imu_topic_, 10, 
+                                     &RobotLocalizationNode::imuCallback, this);
+             ROS_INFO("Subscribed to IMU topic: %s", imu_topic_.c_str());
+         }
+         
+         if (!head_yaw_topic_.empty()) {
+             joint_states_sub_ = nh_.subscribe(head_yaw_topic_, 10, 
+                                              &RobotLocalizationNode::jointStatesCallback, this);
+             ROS_INFO("Subscribed to joint states topic: %s", head_yaw_topic_.c_str());
+         }
+
+
      }
      
      /**
