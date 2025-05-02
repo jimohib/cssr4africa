@@ -1,20 +1,23 @@
 <launch>
-  <!-- start RealSense -->
+
+  <!-- Start RealSense camera -->
   <include file="$(find realsense2_camera)/launch/rs_camera.launch">
     <arg name="enable_color" value="true"/>
+    <arg name="align_depth" value="true"/>
+    <arg name="filters" value="pointcloud"/>
   </include>
 
-  <node pkg="cssr_system"
-        type="arucoLocalization"
-        name="arucoLocalization"
-        output="screen">
-    <!-- load your params -->
-    <rosparam file="$(find cssr_system)/arucoLocalization/config/aruco_params.yaml"
-              command="load"/>
+  <!-- Arguments -->
+  <arg name="verbose_mode_" default="false" doc="Enable verbose mode with terminal output and visualization" />
+  <arg name="config_file" default="$(find cssr_system)arucoLocalization/config/landmarks.yaml" doc="Path to marker configuration file" />
+  <arg name="topics_file" default="$(find cssr_system)arucoLocalization/data/pepperTopics.dat" doc="Path to topic configuration file" />
+  <!-- <arg name="camera_params_file" default="$(find cssr_system)arucoLocalization/config/camera_calibration.yaml" doc="Path to camera calibration file" /> -->
 
-    <!-- *** IMPORTANT REMAPS *** -->
-    <remap from="image"       to="/camera/color/image_raw"/>
-    <remap from="camera_info" to="/camera/color/camera_info"/>
-    <remap from="odom"        to="/naoqi_driver/odom"/>
+  <!-- Launch the robot localization node -->
+  <node pkg="cssr_system" type="arucoLocalization" name="arucoLocalization" output="screen">
+    <param name="verbose_mode_" value="$(arg verbose)" />
+    <param name="config_file" value="$(arg config_file)" />
+    <param name="topics_file" value="$(arg topics_file)" />
+    <!-- <param name="camera_params_file" value="$(arg camera_params_file)" /> -->
   </node>
 </launch>
