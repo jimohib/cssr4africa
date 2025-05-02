@@ -87,15 +87,15 @@
          loadLandmarks();
          
          // Initialize ArUco detector
-         aruco_dict_ = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_6X6_250);
+         aruco_dict_ = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_100);
          aruco_params_ = cv::aruco::DetectorParameters::create();
          
          // Initialize SIFT detector
         //  sift_detector_ = cv::SIFT::create();
          
          // Initialize camera calibration parameters (these should be loaded from a calibration file)
-         camera_matrix_ = cv::Mat::eye(3, 3, CV_64F);
-         dist_coeffs_ = cv::Mat::zeros(5, 1, CV_64F);
+         camera_matrix_ = (cv::Mat_<double>(3, 3) << 911.6033325195312, 0.0, 655.0755615234375, 0.0, 910.8851318359375, 363.9165954589844, 0.0, 0.0, 1.0);
+         dist_coeffs_ = (cv::Mat_<double>(1, 5) << 0.0, 0.0, 0.0, 0.0, 0.0);
          
          // Initialize robot pose
          current_pose_.x = 0.0;
@@ -206,8 +206,8 @@
       * Load landmarks from configuration file
       */
      void loadLandmarks() {
-         std::string package_path = ros::package::getPath("robot_localization");
-         std::string landmarks_path = package_path + "/config/" + landmarks_config_file_;
+         std::string package_path = ros::package::getPath("cssr_system");
+         std::string landmarks_path = package_path + "/arucoLocalization/config/" + landmarks_config_file_;
          
          try {
              YAML::Node config = YAML::LoadFile(landmarks_path);
@@ -217,7 +217,7 @@
                  lm.id = landmark["id"].as<int>();
                  lm.x = landmark["x"].as<double>();
                  lm.y = landmark["y"].as<double>();
-                 lm.name = landmark["name"].as<std::string>();
+                 lm.name = landmark["description"].as<std::string>();
                  
                  landmarks_.push_back(lm);
                  
@@ -415,8 +415,8 @@
          triangulatePosition(x1, y1, x2, y2, x3, y3, alpha1, alpha2, xr, yr);
          
          // Update robot position
-         current_pose_.x = xr;
-         current_pose_.y = yr;
+         current_pose_.x = xr + 6.0;
+         current_pose_.y = yr - 2.0;
          
          // Calculate orientation based on landmark positions
          calculateOrientation(detected_landmarks[0], landmark_pixels[0]);
