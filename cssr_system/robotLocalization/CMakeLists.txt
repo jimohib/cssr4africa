@@ -3,7 +3,7 @@ add_executable(robotLocalization src/robotLocalizationApplication.cpp src/robotL
 # Set properties for the executable
 set_target_properties(robotLocalization PROPERTIES OUTPUT_NAME robotLocalization PREFIX "")
 # Link the required libraries
-target_link_libraries(robotLocalization ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
+target_link_libraries(robotLocalization ${catkin_LIBRARIES} ${aruco_INCLUDE_DIRS} ${OpenCV_LIBRARIES} yaml-cpp)
 # Include the necessary directories
 target_include_directories(robotLocalization PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${catkin_INCLUDE_DIRS})
 # Add dependencies

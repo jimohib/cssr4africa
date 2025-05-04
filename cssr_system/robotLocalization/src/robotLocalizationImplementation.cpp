@@ -1,886 +1,513 @@
-#include "robotLocalization/robotLocalizationInterface.h"
-#include <fstream>
-#include <ros/package.h>
-#include <opencv2/opencv.hpp>
-#include <cv_bridge/cv_bridge.h>
-#include <angles/angles.h>
-#include <tf/transform_broadcaster.h>
+#include <ros/ros.h>
+#include <nav_msgs/Odometry.h>
 #include <sensor_msgs/Imu.h>
-#include <geometry_msgs/PoseStamped.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/JointState.h>
+#include <geometry_msgs/Pose2D.h>
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/opencv.hpp>
 #include <opencv2/aruco.hpp>
 #include <image_transport/image_transport.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <yaml-cpp/yaml.h>
+#include <fstream>
+#include <map>
+#include <robot_localization/ResetPose.h>
+#include "robotLocalization/robotLocalizationInterface.h"
 
-// Implementation of RobotLocalization methods
-RobotLocalization::RobotLocalization() {
-    loadConfiguration();
-    relative_pose.x = 0.0;
-    relative_pose.y = 0.0;
-    relative_pose.theta = 0.0;
+class RobotLocalizationNode {
+public:
+    RobotLocalizationNode() : nh_("~"), it_(nh_) {
+        // Load parameters
+        nh_.param("verbose", verbose_, false);
+        nh_.param("use_depth", use_depth_, false);
+        nh_.param("reset_interval", reset_interval_, 10.0); // seconds
+        nh_.param("config_file", config_file_, std::string("config/landmarks.yaml"));
+        nh_.param("topics_file", topics_file_, std::string("data/pepperTopics.dat"));
 
-    process_image = false;
-    first_odom_received_ = false;
-    adjustment_x_ = adjustment_y_ = adjustment_theta_ = 0.0;
-    odom_x_ = odom_y_ = odom_theta_ = 0.0;
-    initROS();
-    initializePoseAdjustments();
+        // Load topic names
+        loadTopicNames();
 
-    // Initialize ArUco marker detector
-    dictionary_ = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_100);
-    parameters_ = cv::aruco::DetectorParameters::create();
+        // Load landmark coordinates
+        loadLandmarks();
 
-    // camera_matrix_ = (cv::Mat_<double>(3, 3) << 910.58, 0.0, 633.34, 
-    //                                                  0.0, 910.52, 387.16, 
-    //                                                  0.0, 0.0, 1.0);
-    // dist_coeffs_ = (cv::Mat_<double>(1, 5) << 0, 0, 0, 0, 0);
+        // Subscribers
+        odom_sub_ = nh_.subscribe(topic_map_["Odometry"], 10, &RobotLocalizationNode::odomCallback, this);
+        imu_sub_ = nh_.subscribe(topic_map_["IMU"], 10, &RobotLocalizationNode::imuCallback, this);
+        image_sub_ = it_.subscribe(topic_map_["RGBRealSense"], 10, &RobotLocalizationNode::imageCallback, this);
+        depth_sub_ = it_.subscribe(topic_map_["DepthRealSense"], 10, &RobotLocalizationNode::depthCallback, this);
+        joint_sub_ = nh_.subscribe(topic_map_["HeadYaw"], 10, &RobotLocalizationNode::jointCallback, this);
 
-    camera_matrix_ = (cv::Mat_<double>(3, 3) << 909.18, 0.0, 642.07, 
-                                                     0.0, 908.58, 384.44, 
-                                                     0.0, 0.0, 1.0);
-    dist_coeffs_ = (cv::Mat_<double>(1, 5) << 0, 0, 0, 0, 0);
+        // Publishers
+        pose_pub_ = nh_.advertise<geometry_msgs::Pose2D>("/robotLocalization/pose", 10);
+        image_pub_ = it_.advertise("/robotLocalization/marker_image", 10);
 
+        // Service
+        reset_srv_ = nh_.advertiseService("/robotLocalization/reset_pose", &RobotLocalizationNode::resetPoseCallback, this);
 
-    last_update_time_ = ros::Time::now();
-    last_x_ = last_y_ = last_theta_ = 0.0;  // Store last position to track movement
-    movement_threshold_ = 5.5; // Minimum distance to move before updating
-    update_interval_ = ros::Duration(5.0); // Update every 5 seconds
+        // Initialize pose
+        current_pose_.x = 0.0;
+        current_pose_.y = 0.0;
+        current_pose_.theta = 0.0;
 
-    // Map to store known marker positions in the LAB frame
-    marker_positions = {
-        {10, cv::Point3d(6.6, 1.25, 90.0)},
-        {15, cv::Point3d(3.2, 3.85, 90.0)},
-        {20, cv::Point3d(3.8, 0.1, 90.0)},
-        {25, cv::Point3d(2.0, 0.02, 90.0)},
-        {30, cv::Point3d(2.0, 3.8, 90.0)},
-        {35, cv::Point3d(0.0, 2.4, 0.0)},
-        {40, cv::Point3d(0.0, 4.2, 0.0)},
-        {45, cv::Point3d(0.0, 6.0, 0.0)},
-        {50, cv::Point3d(0.0, 7.2, 0.0)},
-        {55, cv::Point3d(0.1, 9.84, -90.0)},
-        {60, cv::Point3d(2.0, 9.94, -90.0)},
-        {65, cv::Point3d(5.0, 9.94, -90.0)},
-        {70, cv::Point3d(6.6, 9.84, -90.0)},
-        {75, cv::Point3d(6.8, 7.2, 180.0)},
-        {80, cv::Point3d(6.8, 5.1, 180.0)},
-        {85, cv::Point3d(6.8, 3.0, 180.0)}
-    };
-}
+        // Timer for periodic reset
+        reset_timer_ = nh_.createTimer(ros::Duration(reset_interval_), &RobotLocalizationNode::resetTimerCallback, this);
 
-void RobotLocalization::loadConfiguration() {
-    // Load configuration file
-    ros::NodeHandle private_nh("~");
-    std::string config_file = ros::package::getPath(ROS_PACKAGE_NAME) + "/robotLocalization/config/robotLocalizationConfiguration.ini";
-    std::ifstream infile(config_file);
-    if (!infile.is_open()) {
-        ROS_ERROR("Failed to open configuration file: %s", config_file.c_str());
-        ros::shutdown();
+        // Camera parameters (adjust as needed)
+        fx_ = 615.0; // Focal length in x (pixels)
+        fy_ = 615.0; // Focal length in y (pixels)
+        cx_ = 320.0; // Principal point x (pixels)
+        cy_ = 240.0; // Principal point y (pixels)
+
+        ROS_INFO("Robot Localization Node initialized");
     }
 
-    std::string line;
-    while (std::getline(infile, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        size_t pos = line.find('=');
-        if (pos == std::string::npos) continue;
-        std::string key = trim(line.substr(0, pos));
-        std::string value = trim(line.substr(pos + 1));
-        config_[key] = value;
-    }
-    infile.close();
+private:
+    ros::NodeHandle nh_;
+    image_transport::ImageTransport it_;
+    ros::Subscriber odom_sub_, imu_sub_, joint_sub_;
+    image_transport::Subscriber image_sub_, depth_sub_;
+    ros::Publisher pose_pub_;
+    image_transport::Publisher image_pub_;
+    ros::ServiceServer reset_srv_;
+    ros::Timer reset_timer_;
 
-    // Set configuration variables
-    platform_ = config_["platform"];
-    camera_ = config_["camera"];
-    reset_interval_ = std::stoi(config_["resetInterval"]);
-    robot_topics_file_ = config_["robotTopics"];
-    simulator_topics_file_ = config_["simulatorTopics"];
-    verbose_mode = (config_["verboseMode"] == "true");
+    bool verbose_, use_depth_;
+    double reset_interval_;
+    std::string config_file_, topics_file_;
+    geometry_msgs::Pose2D current_pose_;
+    std::map<int, std::pair<double, double>> landmarks_; // ID -> (x, y)
+    std::map<std::string, std::string> topic_map_;
+    cv::Mat latest_image_, latest_depth_;
+    double head_yaw_ = 0.0;
+    double fx_, fy_, cx_, cy_; // Camera intrinsics
 
-    // Load topic names
-    loadTopicNames();
-}
-
-void RobotLocalization::loadTopicNames() {
-    std::string topics_file;
-    if (platform_ == "robot")
-        topics_file = ros::package::getPath(ROS_PACKAGE_NAME) + "/robotLocalization/data/" + robot_topics_file_;
-    else
-        topics_file = ros::package::getPath(ROS_PACKAGE_NAME) + "/robotLocalization/data/" + simulator_topics_file_;
-
-    std::ifstream infile(topics_file.c_str());
-    if (!infile.is_open()) {
-        ROS_ERROR("Failed to open topics file: %s", topics_file.c_str());
-        ros::shutdown();
-    }
-
-    std::string line;
-    while (std::getline(infile, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        size_t pos = line.find('=');
-        if (pos == std::string::npos) continue;
-        std::string key = trim(line.substr(0, pos));
-        std::string value = trim(line.substr(pos + 1));
-        topics_[key] = value;
-    }
-    infile.close();
-}
-
-void RobotLocalization::initROS() {
-    odom_sub = nh.subscribe(topics_["Odometry"], 10, &RobotLocalization::odomCallback, this);
-    imu_sub = nh.subscribe(topics_["IMU"], 10, &RobotLocalization::imuCallback, this);
-    joint_state_sub = nh.subscribe(topics_["HeadYaw"], 10, &RobotLocalization::jointStateCallback, this);
-
-    image_transport::ImageTransport it(nh);
-    camera_sub = it.subscribe(topics_[camera_], 1, &RobotLocalization::imageCallback, this);
-
-    pose_pub_ = nh.advertise<geometry_msgs::Pose2D>("/robotLocalization/pose", 10);
-    reset_service = nh.advertiseService("/robotLocalization/reset_pose", &RobotLocalization::resetPoseService, this);
-}
-
-void RobotLocalization::initializePoseAdjustments() {
-    ros::Rate rate(10);
-    while (!first_odom_received_ && ros::ok()) {
-        ros::spinOnce();
-        rate.sleep();
-    }
-    adjustment_x_ = initial_robot_x - odom_x_;
-    adjustment_y_ = initial_robot_y - odom_y_;
-    adjustment_theta_ = angles::normalize_angle(initial_robot_theta - odom_theta_);
-}
-
-void RobotLocalization::setInitialValues(double x, double y, double theta) {
-    initial_robot_x = x;
-    initial_robot_y = y;
-    initial_robot_theta = theta;
-
-    ros::Rate rate(10);
-    while (!first_odom_received_ && ros::ok()) {
-        ros::spinOnce();
-        rate.sleep();
+    void loadTopicNames() {
+        std::ifstream file(topics_file_);
+        std::string line;
+        while (std::getline(file, line)) {
+            size_t pos = line.find("=");
+            if (pos != std::string::npos) {
+                std::string key = line.substr(0, pos);
+                std::string value = line.substr(pos + 1);
+                key.erase(key.find_last_not_of(" \t") + 1);
+                value.erase(0, value.find_first_not_of(" \t"));
+                topic_map_[key] = value;
+            }
+        }
+        ROS_INFO("Loaded topics from %s", topics_file_.c_str());
     }
 
-    // **Ensure odometry data is up-to-date**
-    ros::spinOnce();
-
-    // Calculate adjustments between initial pose and current odometry
-    adjustment_x_ = initial_robot_x - odom_x_;
-    adjustment_y_ = initial_robot_y - odom_y_;
-    adjustment_theta_ = initial_robot_theta - odom_theta_;
-}
-
-void RobotLocalization::odomCallback(const nav_msgs::Odometry::ConstPtr& msg) {
-    odom_x_ = msg->pose.pose.position.x;
-    odom_y_ = msg->pose.pose.position.y;
-    odom_theta_ = 2 * atan2(msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
-    first_odom_received_ = true;
-
-    double x = odom_x_ + adjustment_x_ - initial_robot_x;
-    double y = odom_y_ + adjustment_y_ - initial_robot_y;
-
-    double current_x = x * cos(adjustment_theta_) - y * sin(adjustment_theta_);
-    double current_y = x * sin(adjustment_theta_) + y * cos(adjustment_theta_);
-
-    current_x += initial_robot_x;
-    current_y += initial_robot_y;
-
-    double current_theta = odom_theta_ + adjustment_theta_;
-
-    relative_pose.x = current_x;
-    relative_pose.y = current_y;
-    relative_pose.theta = current_theta;
-
-    geometry_msgs::Pose2D pose_msg;
-    pose_msg.x = relative_pose.x;
-    pose_msg.y = relative_pose.y;
-    pose_msg.theta = angles::to_degrees(relative_pose.theta);
-
-    pose_pub_.publish(pose_msg);
-
-    if (verbose_mode) {
-        ROS_INFO_THROTTLE(1, "Odometry: position = (%5.3f, %5.3f) orientation = %5.3f degrees", current_x, current_y, angles::to_degrees(current_theta));
+    void loadLandmarks() {
+        YAML::Node config = YAML::LoadFile(config_file_);
+        for (const auto& marker : config["landmarks"]) {
+            int id = marker["id"].as<int>();
+            double x = marker["x"].as<double>();
+            double y = marker["y"].as<double>();
+            landmarks_[id] = {x, y};
+        }
+        ROS_INFO("Loaded %zu landmarks from %s", landmarks_.size(), config_file_.c_str());
     }
-}
 
-void RobotLocalization::imuCallback(const sensor_msgs::Imu::ConstPtr& msg) {
-    // Process IMU data if needed
-}
+    void odomCallback(const nav_msgs::Odometry::ConstPtr& msg) {
+        // Update pose using odometry
+        current_pose_.x = msg->pose.pose.position.x;
+        current_pose_.y = msg->pose.pose.position.y;
+        tf2::Quaternion q(
+            msg->pose.pose.orientation.x,
+            msg->pose.pose.orientation.y,
+            msg->pose.pose.orientation.z,
+            msg->pose.pose.orientation.w);
+        tf2::Matrix3x3 m(q);
+        double roll, pitch, yaw;
+        m.getRPY(roll, pitch, yaw);
+        current_pose_.theta = yaw;
 
-void RobotLocalization::jointStateCallback(const sensor_msgs::JointState::ConstPtr& msg) {
-    for (size_t i = 0; i < msg->name.size(); ++i) {
-        if (msg->name[i] == "HeadYaw") {
-            head_yaw_angle_ = msg->position[i];
-            break;
+        publishPose();
+    }
+
+    void imuCallback(const sensor_msgs::Imu::ConstPtr& msg) {
+        // Optionally refine yaw using IMU angular velocity
+        // For simplicity, we rely on odometry for now
+    }
+
+    void jointCallback(const sensor_msgs::JointState::ConstPtr& msg) {
+        // Assume "HeadYaw" is the joint name for yaw
+        for (size_t i = 0; i < msg->name.size(); ++i) {
+            if (msg->name[i] == "HeadYaw") { // Adjust name as per robot
+                head_yaw_ = msg->position[i];
+                break;
+            }
         }
     }
-}
 
-void RobotLocalization::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
-    // try {
-    //     cv_ptr_ = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
-    //     current_image_ = cv_ptr_->image;
-
-    //     if (process_image) {
-    //         recognizeLandmarks();
-    //         process_image = false;
-    //     }
-    // } catch (cv_bridge::Exception& e) {
-    //     ROS_ERROR("cv_bridge exception: %s", e.what());
-    // }
-
-    ros::Time now = ros::Time::now();
-
-    // Check if the last update was too recent
-    if (now - last_update_time_ < update_interval_) {
-        ROS_INFO_THROTTLE(5, "Skipping update - time interval not reached.");
-        return;
-    }
-
-    try {
-        cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
-        cv::Mat image = cv_ptr->image;
-        recognizeLandmarks(image);
-    } catch (cv_bridge::Exception& e) {
-        ROS_ERROR("cv_bridge exception: %s", e.what());
-    }
-}
-
-
-// void RobotLocalization::recognizeLandmarks() {
-//     relative_pose.x = 0.0;
-//     relative_pose.y = 0.0;
-//     relative_pose.theta = 0.0;
-// }
-
-
-void RobotLocalization::recognizeLandmarks(const cv::Mat& image) {
-
-    std::vector<int> marker_ids;
-    std::vector<std::vector<cv::Point2f>> marker_corners;
-    cv::aruco::detectMarkers(image, dictionary_, marker_corners, marker_ids, parameters_);
-
-    if (marker_ids.empty()) {
-        return; // No markers detected
-    }
-
-    std::vector<cv::Vec3d> rvecs, tvecs;
-    cv::aruco::estimatePoseSingleMarkers(marker_corners, marker_size_, camera_matrix_, dist_coeffs_, rvecs, tvecs);
-
-    std::vector<cv::Point3d> estimated_positions;
-    std::vector<double> weights;
-
-    for (size_t i = 0; i < marker_ids.size(); i++) {
-        int marker_id = marker_ids[i];
-
-        // Ensure marker has a known position in the LAB frame
-        if (marker_positions.find(marker_id) == marker_positions.end()) {
-            ROS_WARN("Marker ID %d is not in the lookup table. Skipping.", marker_id);
-            continue;
+    void imageCallback(const sensor_msgs::Image::ConstPtr& msg) {
+        try {
+            latest_image_ = cv_bridge::toCvShare(msg, "bgr8")->image;
+        } catch (cv_bridge::Exception& e) {
+            ROS_ERROR("cv_bridge exception: %s", e.what());
         }
-
-        // Known marker position in LAB frame
-        double Xm = marker_positions[marker_id].x;
-        double Ym = marker_positions[marker_id].y;
-        double Theta_m = marker_positions[marker_id].z; // In degrees
-
-        // Marker pose relative to camera
-        double Xc = tvecs[i][0];  // Camera-relative X
-        double Yc = tvecs[i][1];  // Camera-relative Y
-        double Theta_c = rvecs[i][2] * (180.0 / M_PI); // Convert radians to degrees
-
-        // **Convert marker’s pose to global LAB frame**
-        double robot_x = Xm + cos(Theta_m * M_PI / 180.0) * Xc - sin(Theta_m * M_PI / 180.0) * Yc;
-        double robot_y = Ym + sin(Theta_m * M_PI / 180.0) * Xc + cos(Theta_m * M_PI / 180.0) * Yc;
-        double robot_theta = Theta_m + Theta_c;
-
-        // **Normalize theta within (-180, 180) degrees**
-        robot_theta = fmod(robot_theta + 180.0, 360.0) - 180.0;
-
-        // Store computed pose
-        estimated_positions.push_back(cv::Point3d(robot_x, robot_y, robot_theta));
-
-        // Compute weight (closer markers have higher influence)
-        double distance = sqrt(Xc * Xc + Yc * Yc);
-        double weight = 1.0 / (distance + 0.0001); // Avoid division by zero
-        weights.push_back(weight);
     }
 
-    double rotation_threshold_ = angles::from_degrees(90.0);
-
-    if (estimated_positions.empty()) {
-        ROS_WARN("No valid markers for absolute localization.");
-        return;
+    void depthCallback(const sensor_msgs::Image::ConstPtr& msg) {
+        try {
+            latest_depth_ = cv_bridge::toCvShare(msg, "32FC1")->image;
+        } catch (cv_bridge::Exception& e) {
+            ROS_ERROR("cv_bridge exception: %s", e.what());
+        }
     }
 
-    // **Compute final estimated pose using weighted averaging**
-    double sum_x = 0, sum_y = 0, sum_theta = 0, sum_weights = 0;
-    for (size_t i = 0; i < estimated_positions.size(); i++) {
-        sum_x += estimated_positions[i].x * weights[i];
-        sum_y += estimated_positions[i].y * weights[i];
-        sum_theta += estimated_positions[i].z * weights[i];
-        sum_weights += weights[i];
+    bool resetPoseCallback(robot_localization::ResetPose::Request& req, robot_localization::ResetPose::Response& res) {
+        if (computeAbsolutePose()) {
+            res.success = true;
+            ROS_INFO("Pose reset successfully");
+        } else {
+            res.success = false;
+            ROS_WARN("Failed to reset pose");
+        }
+        return true;
     }
 
-    double final_x = sum_x / sum_weights;
-    double final_y = sum_y / sum_weights;
-    double final_theta = sum_theta / sum_weights;
-
-    // **Ensure pose updates only when robot has moved significantly**
-    double distance_moved = sqrt(pow(final_x - last_x_, 2) + pow(final_y - last_y_, 2));
-    double rotation_moved = fabs(final_theta - last_theta_);
-
-    if (distance_moved < movement_threshold_ && rotation_moved < rotation_threshold_) {
-        ROS_INFO_THROTTLE(5, "Skipping update - robot hasn't moved significantly.");
-        return;
+    void dwim::EventTime reset_timer_;
+    void resetTimerCallback(const ros::TimerEvent& event) {
+        computeAbsolutePose();
     }
 
-    // **Update pose only if significant movement occurred**
-    last_x_ = final_x;
-    last_y_ = final_y;
-    last_theta_ = final_theta;
-    last_update_time_ = ros::Time::now();
+    bool computeAbsolutePose() {
+        if (use_depth_) {
+            return computeAbsolutePoseWithDepth();
+        } else {
+            if (latest_image_.empty()) {
+                ROS_WARN("No image available for absolute pose estimation");
+                return false;
+            }
 
-    // **Publish updated pose**
-    geometry_msgs::PoseStamped pose_msg;
-    pose_msg.header.stamp = ros::Time::now();
-    pose_msg.header.frame_id = "map";
-    pose_msg.pose.position.x = final_x;
-    pose_msg.pose.position.y = final_y;
-    pose_msg.pose.orientation = tf::createQuaternionMsgFromYaw(final_theta * M_PI / 180.0);
-    pose_pub_.publish(pose_msg);
+            // Detect ArUco markers
+            std::vector<int> marker_ids;
+            std::vector<std::vector<cv::Point2f>> marker_corners;
+            cv::Ptr<cv::aruco::Dictionary> dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_100);
+            cv::aruco::detectMarkers(latest_image_, dictionary, marker_corners, marker_ids);
 
-    ROS_INFO("Updated absolute pose: (%.2f, %.2f, %.2f)", final_x, final_y, final_theta);
+            if (marker_ids.size() < 3) {
+                ROS_WARN("Detected %zu markers, need at least 3", marker_ids.size());
+                return false;
+            }
 
+            // Draw bounding boxes
+            cv::Mat output_image = latest_image_.clone();
+            cv::aruco::drawDetectedMarkers(output_image, marker_corners, marker_ids);
 
-    // std::vector<int> marker_ids;
-    // std::vector<std::vector<cv::Point2f>> marker_corners;
-    // cv::aruco::detectMarkers(image, dictionary_, marker_corners, marker_ids, parameters_);
+            // Compute angles and triangulate
+            std::vector<std::pair<double, double>> marker_centers;
+            for (size_t i = 0; i < marker_ids.size(); ++i) {
+                auto& corners = marker_corners[i];
+                double cx = (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4.0;
+                double cy = (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4.0;
+                marker_centers.push_back({cx, cy});
+            }
 
-    // if (marker_ids.empty()) {
-    //     return; // No markers detected
-    // }
+            // Assume first three detected markers are used
+            int id1 = marker_ids[0], id2 = marker_ids[1], id3 = marker_ids[2];
+            if (landmarks_.find(id1) == landmarks_.end() || landmarks_.find(id2) == landmarks_.end() || landmarks_.find(id3) == landmarks_.end()) {
+                ROS_WARN("Unknown marker IDs detected");
+                return false;
+            }
 
-    // std::vector<cv::Vec3d> rvecs, tvecs;
-    // cv::aruco::estimatePoseSingleMarkers(marker_corners, marker_size_, camera_matrix_, dist_coeffs_, rvecs, tvecs);
+            double x1 = landmarks_[id1].first, y1 = landmarks_[id1].second;
+            double x2 = landmarks_[id2].first, y2 = landmarks_[id2].second;
+            double x3 = landmarks_[id3].first, y3 = landmarks_[id3].second;
 
-    // std::vector<cv::Point3d> estimated_positions;
-    // std::vector<double> weights;
+            // Compute angles alpha1 (between markers 1 and 2) and alpha2 (between markers 2 and 3)
+            double alpha1 = computeAngle(marker_centers[0], marker_centers[1]);
+            double alpha2 = computeAngle(marker_centers[1], marker_centers[2]);
 
-    // for (size_t i = 0; i < marker_ids.size(); i++) {
-    //     int marker_id = marker_ids[i];
+            // Triangulation
+            double xc1a, yc1a, xc1b, yc1b, xc2a, yc2a, xc2b, yc2b, r1, r2;
+            double x1_intersection, y1_intersection, x2_intersection, y2_intersection;
+            double tolerance = 0.001;
 
-    //     // Ensure marker has a known position in the LAB frame
-    //     if (marker_positions.find(marker_id) == marker_positions.end()) {
-    //         ROS_WARN("Marker ID %d is not in the lookup table. Skipping.", marker_id);
-    //         continue;
-    //     }
+            circle_centre(x2, y2, x1, y1, alpha1, &xc1a, &yc1a, &xc1b, &yc1b, &r1);
+            circle_centre(x3, y3, x2, y2, alpha2, &xc2a, &yc2a, &xc2b, &yc2b, &r2);
 
-    //     // Known marker position in LAB frame
-    //     double Xm = marker_positions[marker_id].x;
-    //     double Ym = marker_positions[marker_id].y;
-    //     double Theta_m = marker_positions[marker_id].z;
+            int result = circle_circle_intersection(xc1a, yc1a, r1, xc2a, yc2a, r2, &x1_intersection, &y1_intersection, &x2_intersection, &y2_intersection);
+            if (result == 0) {
+                ROS_WARN("Circles do not intersect");
+                return false;
+            }
 
-    //     // Marker pose relative to camera
-    //     double Xc = tvecs[i][0]; 
-    //     double Yc = tvecs[i][1]; 
-    //     double Theta_c = rvecs[i][2];
+            // Determine robot position
+            double xr, yr;
+            if ((std::abs(x1_intersection - x1) < tolerance && std::abs(y1_intersection - y1) < tolerance) ||
+                (std::abs(x1_intersection - x2) < tolerance && std::abs(y1_intersection - y2) < tolerance) ||
+                (std::abs(x1_intersection - x3) < tolerance && std::abs(y1_intersection - y3) < tolerance)) {
+                xr = x2_intersection;
+                yr = y2_intersection;
+            } else {
+                xr = x1_intersection;
+                yr = y1_intersection;
+            }
 
-    //     // Convert marker’s pose to global LAB frame
-    //     double robot_x = Xm + cos(Theta_m * M_PI / 180.0) * Xc - sin(Theta_m * M_PI / 180.0) * Yc;
-    //     double robot_y = Ym + sin(Theta_m * M_PI / 180.0) * Xc + cos(Theta_m * M_PI / 180.0) * Yc;
-    //     double robot_theta = Theta_m + Theta_c * (180.0 / M_PI);
+            // Compute yaw (using marker 1)
+            double theta = computeYaw(marker_centers[0], x1, y1, xr, yr);
 
-    //     // Store computed pose
-    //     estimated_positions.push_back(cv::Point3d(robot_x, robot_y, robot_theta));
+            // Update pose
+            current_pose_.x = xr;
+            current_pose_.y = yr;
+            current_pose_.theta = theta;
 
-    //     // Compute weight (closer markers have higher influence)
-    //     double distance = sqrt(Xc * Xc + Yc * Yc);
-    //     double weight = 1.0 / (distance + 0.0001); // Avoid division by zero
-    //     weights.push_back(weight);
-    // }
+            // Publish image
+            sensor_msgs::ImagePtr img_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", output_image).toImageMsg();
+            image_pub_.publish(img_msg);
 
-    // if (estimated_positions.empty()) {
-    //     ROS_WARN("No valid markers for absolute localization.");
-    //     return;
-    // }
+            // Display in verbose mode
+            if (verbose_) {
+                ROS_INFO("Robot Pose: x=%.3f, y=%.3f, theta=%.3f", xr, yr, theta);
+                cv::imshow("ArUco Markers", output_image);
+                cv::waitKey(1);
+            }
 
-    // double rotation_threshold_ = angles::from_degrees(90.0);
+            publishPose();
+            return true;
+        }
+    }
 
-    // // Compute final estimated pose using weighted average
-    // double sum_x = 0, sum_y = 0, sum_theta = 0, sum_weights = 0;
-    // for (size_t i = 0; i < estimated_positions.size(); i++) {
-    //     sum_x += estimated_positions[i].x * weights[i];
-    //     sum_y += estimated_positions[i].y * weights[i];
-    //     sum_theta += estimated_positions[i].z * weights[i];
-    //     sum_weights += weights[i];
-    // }
-
-    // double final_x = sum_x / sum_weights;
-    // double final_y = sum_y / sum_weights;
-    // double final_theta = sum_theta / sum_weights;
-
-    // // Check if the robot has moved significantly before updating
-    // double distance_moved = sqrt(pow(final_x - last_x_, 2) + pow(final_y - last_y_, 2));
-    // double rotation_moved = fabs(final_theta - last_theta_);
-
-    // if (distance_moved < movement_threshold_ && rotation_moved < rotation_threshold_) {
-    //     ROS_INFO_THROTTLE(5, "Skipping update - robot hasn't moved significantly.");
-    //     return;
-    // }
-
-    // // Update pose only if significant movement occurred
-    // last_x_ = final_x;
-    // last_y_ = final_y;
-    // last_theta_ = final_theta;
-    // last_update_time_ = ros::Time::now();
-
-    // // Publish updated pose
-    // geometry_msgs::PoseStamped pose_msg;
-    // pose_msg.header.stamp = ros::Time::now();
-    // pose_msg.header.frame_id = "map";
-    // pose_msg.pose.position.x = final_x;
-    // pose_msg.pose.position.y = final_y;
-    // pose_msg.pose.orientation = tf::createQuaternionMsgFromYaw(final_theta * M_PI / 180.0);
-    // pose_pub_.publish(pose_msg);
-
-    // ROS_INFO("Updated absolute pose: (%.2f, %.2f, %.2f)", final_x, final_y, final_theta);
-
-    // std::vector<int> marker_ids;
-    // std::vector<std::vector<cv::Point2f>> marker_corners;
-    // cv::aruco::detectMarkers(image, dictionary_, marker_corners, marker_ids, parameters_);
-
-    // if (marker_ids.empty()) {
-    //     return;  // No markers detected
-    // }
-
-    // std::vector<cv::Vec3d> rvecs, tvecs;
-    // cv::aruco::estimatePoseSingleMarkers(marker_corners, marker_size_, camera_matrix_, dist_coeffs_, rvecs, tvecs);
-
-    // double sum_x = 0.0, sum_y = 0.0, sum_theta = 0.0;
-    // int valid_markers = 0;
-
-    // for (size_t i = 0; i < marker_ids.size(); i++) {
-    //     int marker_id = marker_ids[i];
-
-    //     // Ensure marker exists in lookup table
-    //     if (marker_positions.find(marker_id) == marker_positions.end()) {
-    //         ROS_WARN("Marker ID %d is not in the lookup table. Skipping.", marker_id);
-    //         continue;
-    //     }
-
-    //     // Known marker position in LAB frame
-    //     double Xm = marker_positions[marker_id].x;
-    //     double Ym = marker_positions[marker_id].y;
-    //     double Theta_m = marker_positions[marker_id].z;  // θ in degrees
-
-    //     // Marker pose relative to camera
-    //     double Xc = tvecs[i][0];  // X relative to camera
-    //     double Yc = tvecs[i][1];  // Y relative to camera
-    //     double Theta_c = rvecs[i][2] * (180.0 / M_PI);  // Convert to degrees
-
-    //     // Compute the marker's actual position in LAB frame
-    //     double marker_x_lab = Xm + cos(Theta_m * M_PI / 180.0) * Xc - sin(Theta_m * M_PI / 180.0) * Yc;
-    //     double marker_y_lab = Ym + sin(Theta_m * M_PI / 180.0) * Xc + cos(Theta_m * M_PI / 180.0) * Yc;
-    //     double marker_theta_lab = Theta_m + Theta_c;
-
-    //     // Accumulate values for averaging
-    //     sum_x += marker_x_lab;
-    //     sum_y += marker_y_lab;
-    //     sum_theta += marker_theta_lab;
-    //     valid_markers++;
-    // }
-
-    // // Compute the final absolute pose using all detected markers
-    // if (valid_markers > 0) {
-    //     double robot_x = sum_x / valid_markers;
-    //     double robot_y = sum_y / valid_markers;
-    //     double robot_theta = sum_theta / valid_markers;
-
-    //     // Check movement threshold before updating
-    //     double distance_moved = sqrt(pow(robot_x - last_x_, 2) + pow(robot_y - last_y_, 2));
-    //     if (distance_moved < movement_threshold_) {
-    //         ROS_INFO_THROTTLE(5, "Skipping update - robot hasn't moved significantly.");
-    //         return;
-    //     }
-
-    //     // Update last known position
-    //     last_x_ = robot_x;
-    //     last_y_ = robot_y;
-    //     last_update_time_ = ros::Time::now();
-
-    //     // Reset Pose Service
-    //     req.x = robot_x;
-    //     req.y = robot_y;
-    //     req.theta = robot_theta;
-    //     bool success = this->resetPoseService(req, res);
-
-    //     if (success) {
-    //         ROS_INFO("Pose reset with absolute localization using multiple markers. Success: %d", res.success);
-    //         ROS_INFO("Final Computed Pose: (%.2f, %.2f, %.2f)", robot_x, robot_y, robot_theta);
-    //     }
-    // }
-
-    // // Draw detected markers
-    // cv::aruco::drawDetectedMarkers(image, marker_corners, marker_ids);
-    // cv::imshow("Aruco Detection", image);
-    // cv::waitKey(1);
-
-
-    // std::vector<int> marker_ids;
-    // std::vector<std::vector<cv::Point2f>> marker_corners;
-    // cv::aruco::detectMarkers(image, dictionary_, marker_corners, marker_ids, parameters_);
-
-    // if (marker_ids.empty()) {
-    //     ROS_WARN_THROTTLE(5, "No markers detected.");
-    //     return;
-    // }
-
-    // std::vector<cv::Vec3d> rvecs, tvecs;
-    // cv::aruco::estimatePoseSingleMarkers(marker_corners, marker_size_, camera_matrix_, dist_coeffs_, rvecs, tvecs);
-
-    // // ✅ Track the best marker for pose correction
-    // int best_marker_id = -1;
-    // double best_reprojection_error = std::numeric_limits<double>::max();
-    // double best_robot_x = 0, best_robot_y = 0, best_robot_theta = 0;
-
-    // for (size_t i = 0; i < marker_ids.size(); i++) {
-    //     int marker_id = marker_ids[i];
-
-    //     // ✅ Ensure marker is in the lookup table
-    //     if (marker_positions.find(marker_id) == marker_positions.end()) {
-    //         ROS_WARN("Marker ID %d is not in lookup table. Skipping.", marker_id);
-    //         continue;
-    //     }
-
-    //     // ✅ Get the known marker position in LAB frame
-    //     double Xm = marker_positions[marker_id].x;
-    //     double Ym = marker_positions[marker_id].y;
-    //     double Theta_m = marker_positions[marker_id].z; // Theta in degrees
-
-    //     // ✅ Get detected marker pose (relative to camera)
-    //     double Xc = tvecs[i][0];  // X relative to camera
-    //     double Yc = tvecs[i][1];  // Y relative to camera
-    //     double Theta_c = rvecs[i][2];  // Rotation (yaw)
-
-    //     // ✅ Convert marker pose from camera frame → LAB frame
-    //     double marker_x_lab = Xm + cos(Theta_m * M_PI / 180.0) * Xc - sin(Theta_m * M_PI / 180.0) * Yc;
-    //     double marker_y_lab = Ym + sin(Theta_m * M_PI / 180.0) * Xc + cos(Theta_m * M_PI / 180.0) * Yc;
-    //     double marker_theta_lab = Theta_m + Theta_c * (180.0 / M_PI);
-
-    //     // ✅ Robot position is the same as the camera position
-    //     double robot_x = marker_x_lab;
-    //     double robot_y = marker_y_lab;
-    //     double robot_theta = marker_theta_lab;
-
-    //     // ✅ Compute reprojection error (to filter bad detections)
-    //     double reprojection_error = fabs(Xc) + fabs(Yc); // Simple heuristic for now
-
-    //     if (reprojection_error < best_reprojection_error) {
-    //         best_reprojection_error = reprojection_error;
-    //         best_marker_id = marker_id;
-    //         best_robot_x = robot_x;
-    //         best_robot_y = robot_y;
-    //         best_robot_theta = robot_theta;
-    //     }
-    // }
-
-    // // ✅ Only update pose if the robot has moved significantly
-    // if (best_marker_id != -1) {
-    //     double distance_moved = sqrt(pow(best_robot_x - last_x_, 2) + pow(best_robot_y - last_y_, 2));
-    //     double rotation_moved = fabs(angles::normalize_angle(best_robot_theta - last_theta_));
-    //     double rotation_threshold = angles::from_degrees(90.0);
-
-    //     static bool has_updated = false;
-
-    //     if (!has_updated || (distance_moved > movement_threshold_ || rotation_moved > rotation_threshold)) {
-    //         has_updated = true;
-
-    //         // ✅ Reset Pose Service
-    //         req.x = best_robot_x;
-    //         req.y = best_robot_y;
-    //         req.theta = best_robot_theta;
-    //         bool success = this->resetPoseService(req, res);
-
-    //         if (success) {
-    //             last_x_ = best_robot_x;
-    //             last_y_ = best_robot_y;
-    //             last_theta_ = best_robot_theta;
-    //             last_update_time_ = ros::Time::now();
-
-    //             ROS_INFO("Updated absolute pose using marker %d: (%.2f, %.2f, %.2f)", 
-    //                      best_marker_id, best_robot_x, best_robot_y, best_robot_theta);
-    //         }
-    //     } else {
-    //         ROS_INFO_THROTTLE(5, "Skipping update - robot has not moved significantly.");
-    //     }
-    // }
-
-    // // ✅ Draw detected markers
-    // cv::aruco::drawDetectedMarkers(image, marker_corners, marker_ids);
-    // cv::imshow("Aruco Detection", image);
-    // cv::waitKey(1);
-
-
-    // std::vector<int> marker_ids;
-    // std::vector<std::vector<cv::Point2f>> marker_corners;
-    // cv::aruco::detectMarkers(image, dictionary_, marker_corners, marker_ids, parameters_);
+    bool computeAbsolutePoseWithDepth() {
+        if (latest_image_.empty() || latest_depth_.empty()) {
+            ROS_WARN("No image or depth data available");
+            return false;
+        }
     
-    // if (marker_ids.empty()) {
-    //     return; // No markers detected
-    // }
+        // Detect ArUco markers
+        std::vector<int> marker_ids;
+        std::vector<std::vector<cv::Point2f>> marker_corners;
+        cv::Ptr<cv::aruco::Dictionary> dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_100);
+        cv::aruco::detectMarkers(latest_image_, dictionary, marker_corners, marker_ids);
     
-    // std::vector<cv::Vec3d> rvecs, tvecs;
-    // cv::aruco::estimatePoseSingleMarkers(marker_corners, marker_size_, camera_matrix_, dist_coeffs_, rvecs, tvecs);
+        if (marker_ids.size() < 3) {
+            ROS_WARN("Detected %zu markers, need at least 3", marker_ids.size());
+            return false;
+        }
     
-    // int best_marker_id = -1;
-    // double best_distance = std::numeric_limits<double>::max();
-    // double best_robot_x = 0, best_robot_y = 0, best_robot_theta = 0;
-    // double rotation_moved;
-
-    // for (size_t i = 0; i < marker_ids.size(); i++) {
-    //     int marker_id = marker_ids[i];
-
-    //     // Ensure marker has a known position in the LAB frame
-    //     if (marker_positions.find(marker_id) == marker_positions.end()) {
-    //         ROS_WARN("Marker ID %d is not in the lookup table. Skipping.", marker_id);
-    //         continue;
-    //     }
-
-    //     // Get the known marker position in LAB frame
-    //     double Xm = marker_positions[marker_id].x;
-    //     double Ym = marker_positions[marker_id].y;
-    //     double Theta_m = marker_positions[marker_id].z; // Theta in degrees
-
-    //     // Get marker pose from camera
-    //     double Xc = tvecs[i][0];  // Marker X relative to camera
-    //     double Yc = tvecs[i][1];  // Marker Y relative to camera
-    //     double Theta_c = rvecs[i][2];  // Rotation (yaw)
-
-    //     // Convert marker's relative pose to global LAB frame
-    //     double marker_x_lab = Xm + cos(Theta_m * M_PI / 180.0) * Xc - sin(Theta_m * M_PI / 180.0) * Yc;
-    //     double marker_y_lab = Ym + sin(Theta_m * M_PI / 180.0) * Xc + cos(Theta_m * M_PI / 180.0) * Yc;
-    //     double marker_theta_lab = Theta_m + Theta_c * (180.0 / M_PI); // Convert radian to degree
-
-    //     // Compute robot position (since camera is on robot, its pose = robot pose)
-    //     double robot_x = marker_x_lab;
-    //     double robot_y = marker_y_lab;
-    //     double robot_theta = marker_theta_lab;
-
-
-    //     // // Extract marker pose from camera (relative to camera)
-    //     // double marker_x = tvecs[i][0];
-    //     // double marker_y = tvecs[i][1];
-    //     // double marker_theta = rvecs[i][2];
-        
-    //     // // Adjust pose based on known marker positions
-    //     // double corrected_x = marker_x;
-    //     // double corrected_y = marker_y;
-    //     // double corrected_theta = marker_theta;
-        
-    //     // // Update the estimated pose
-    //     // estimated_pose_x_ = corrected_x;
-    //     // estimated_pose_y_ = corrected_y;
-    //     // estimated_pose_theta_ = corrected_theta;
-
-    //     // Check if the robot has moved significantly before updating
-    //     double distance_moved = sqrt(pow(robot_x - last_x_, 2) + pow(robot_y - last_y_, 2));
-    //     rotation_moved = fabs(robot_theta - last_theta_);  // Absolute difference in rotation
-
-    //     if (distance_moved < best_distance) {
-    //         best_distance = distance_moved;
-    //         best_marker_id = marker_id;
-    //         best_robot_x = robot_x;
-    //         best_robot_y = robot_y;
-    //         best_robot_theta = marker_theta_lab;
-    //     }
-    // }
-
-    // // ✅ Only update if a marker is found AND if the robot has moved significantly
-    // static bool has_updated = false;
-    // double rotation_threshold = angles::from_degrees(90.0);
-    // if (best_marker_id != -1) {
-
-    //     // ✅ If this is the first update OR the robot has moved a certain distance, update
-    //     if (!has_updated || (best_distance > movement_threshold_ || rotation_moved > rotation_threshold)) {
-    //         has_updated = true;
-
-    //         // ✅ Reset Pose Service
-    //         req.x = best_robot_x;
-    //         req.y = best_robot_y;
-    //         req.theta = best_robot_theta;
-    //         bool success = this->resetPoseService(req, res);
-
-    //         if (success) {
-    //             last_x_ = best_robot_x;
-    //             last_y_ = best_robot_y;
-    //             last_update_time_ = ros::Time::now();
-
-    //             ROS_INFO("Updated absolute pose using marker %d: (%.2f, %.2f, %.2f)", 
-    //                      best_marker_id, best_robot_x, best_robot_y, best_robot_theta);
-    //         }
-    //     } else {
-    //         ROS_INFO_THROTTLE(5, "Skipping update - robot has not moved significantly.");
-    //     }
-    // }
-
-    // // ✅ Draw detected markers
-    // cv::aruco::drawDetectedMarkers(image, marker_corners, marker_ids);
-    // cv::imshow("Aruco Detection", image);
-    // cv::waitKey(1);
-
-
-    //     // if (distance_moved < movement_threshold_) {
-    //     //     ROS_INFO_THROTTLE(5, "Skipping update - robot hasn't moved significantly.");
-    //     //     return;
-    //     // }
-
-    //     // Update last known position
-    //     last_x_ = Xc;
-    //     last_y_ = Yc;
-    //     last_update_time_ = ros::Time::now();
-        
-    //     // // Publish updated pose
-    //     // geometry_msgs::PoseStamped pose_msg;
-    //     // pose_msg.header.stamp = ros::Time::now();
-    //     // pose_msg.header.frame_id = "map";
-    //     // pose_msg.pose.position.x = robot_x; // estimated_pose_x_;
-    //     // pose_msg.pose.position.y = robot_y; // estimated_pose_y_;
-    //     // pose_msg.pose.orientation = tf::createQuaternionMsgFromYaw(robot_theta * M_PI / 180.0);
-    //     // pose_pub_.publish(pose_msg);
-        
-    //     // // ROS_INFO("Updated absolute pose using marker %d: (%.2f, %.2f, %.2f)", marker_ids[i], corrected_x, corrected_y, corrected_theta);
-    //     // ROS_INFO("Updated absolute pose using marker %d: (%.2f, %.2f, %.2f)", marker_id, robot_x, robot_y, robot_theta);
-
-    //     // Reset Pose Service
-    //     req.x = robot_x;
-    //     req.y = robot_y;
-    //     req.theta = robot_theta;
-    //     bool success = this->resetPoseService(req, res);
-    //     if (success) {
-    //         ROS_INFO("Pose reset with absolute localization. Success: %d", res.success);
-    //         ROS_INFO("Marker %d: (%.2f, %.2f, %.2f)", marker_id, robot_x, robot_y, robot_theta);
-
-    //     }
-    // }
-    cv::aruco::drawDetectedMarkers(image, marker_corners, marker_ids);
-    cv::imshow("Aruco Detection", image);
-    cv::waitKey(3);
-}
-
-
-bool RobotLocalization::resetPoseService(cssr_system::SetPose::Request& req, cssr_system::SetPose::Response& res) {
-    initial_robot_x = req.x;
-    initial_robot_y = req.y;
-    initial_robot_theta = angles::from_degrees(req.theta);
-
-    ros::Rate rate(10);
-    while (!first_odom_received_ && ros::ok()) {
-        ros::spinOnce();
-        rate.sleep();
+        // Get distances from depth image
+        std::vector<std::tuple<int, double, double, double>> markers; // id, x, y, distance
+        for (size_t i = 0; i < marker_ids.size(); ++i) {
+            auto& corners = marker_corners[i];
+            double cx = (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4.0;
+            double cy = (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4.0;
+            float distance = latest_depth_.at<float>(int(cy), int(cx)) / 1000.0; // Convert mm to m
+            if (landmarks_.find(marker_ids[i]) != landmarks_.end() && !std::isnan(distance)) {
+                markers.push_back({marker_ids[i], landmarks_[marker_ids[i]].first, landmarks_[marker_ids[i]].second, distance});
+            }
+        }
+    
+        if (markers.size() < 3) {
+            ROS_WARN("Insufficient valid depth measurements");
+            return false;
+        }
+    
+        // Trilateration: Solve for (xr, yr) using three markers
+        double x1 = std::get<1>(markers[0]), y1 = std::get<2>(markers[0]), d1 = std::get<3>(markers[0]);
+        double x2 = std::get<1>(markers[1]), y2 = std::get<2>(markers[1]), d2 = std::get<3>(markers[1]);
+        double x3 = std::get<1>(markers[2]), y3 = std::get<2>(markers[2]), d3 = std::get<3>(markers[2]);
+    
+        // Simplified trilateration (intersection of two circles)
+        double x12 = x2 - x1, y12 = y2 - y1;
+        double d12 = std::sqrt(x12 * x12 + y12 * y12);
+        double a = (d1 * d1 - d2 * d2 + d12 * d12) / (2.0 * d12);
+        double h = std::sqrt(d1 * d1 - a * a);
+        double xm = x1 + a * x12 / d12;
+        double ym = y1 + a * y12 / d12;
+    
+        double xr1 = xm + h * (y2 - y1) / d12;
+        double yr1 = ym - h * (x2 - x1) / d12;
+        double xr2 = xm - h * (y2 - y1) / d12;
+        double yr2 = ym + h * (x2 - x1) / d12;
+    
+        // Check which solution satisfies the third circle
+        double dist1 = std::sqrt((xr1 - x3) * (xr1 - x3) + (yr1 - y3) * (yr1 - y3));
+        double dist2 = std::sqrt((xr2 - x3) * (xr2 - x3) + (yr2 - y3) * (yr2 - y3));
+        double xr, yr;
+        if (std::abs(dist1 - d3) < std::abs(dist2 - d3)) {
+            xr = xr1;
+            yr = yr1;
+        } else {
+            xr = xr2;
+            yr = yr2;
+        }
+    
+        // Compute yaw (same as triangulation)
+        double theta = computeYaw({marker_corners[0][0].x, marker_corners[0][0].y}, x1, y1, xr, yr);
+    
+        // Update pose
+        current_pose_.x = xr;
+        current_pose_.y = yr;
+        current_pose_.theta = theta;
+    
+        // Publish image (same as triangulation)
+        cv::Mat output_image = latest_image_.clone();
+        cv::aruco::drawDetectedMarkers(output_image, marker_corners, marker_ids);
+        sensor_msgs::ImagePtr img_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", output_image).toImageMsg();
+        image_pub_.publish(img_msg);
+    
+        if (verbose_) {
+            ROS_INFO("Robot Pose (Depth): x=%.3f, y=%.3f, theta=%.3f", xr, yr, theta);
+            cv::imshow("ArUco Markers", output_image);
+            cv::waitKey(1);
+        }
+    
+        publishPose();
+        return true;
     }
 
-    adjustment_x_ = initial_robot_x - odom_x_;
-    adjustment_y_ = initial_robot_y - odom_y_;
-    adjustment_theta_ = initial_robot_theta - odom_theta_;
-    res.success = true;
-    return true;
+    double computeAngle(const std::pair<double, double>& p1, const std::pair<double, double>& p2) {
+        // Convert image coordinates to angles using camera intrinsics
+        double dx1 = (p1.first - cx_) / fx_;
+        double dy1 = (p1.second - cy_) / fy_;
+        double dx2 = (p2.first - cx_) / fx_;
+        double dy2 = (p2.second - cy_) / fy_;
+        double angle = std::acos((dx1 * dx2 + dy1 * dy2) / (std::sqrt(dx1 * dx1 + dy1 * dy1) * std::sqrt(dx2 * dx2 + dy2 * dy2)));
+        return angle * 180.0 / M_PI; // Convert to degrees
+    }
+
+    double computeYaw(const std::pair<double, double>& marker_center, double marker_x, double marker_y, double robot_x, double robot_y) {
+        // Compute direction to marker in world frame
+        double dx = marker_x - robot_x;
+        double dy = marker_y - robot_y;
+        double world_angle = std::atan2(dy, dx);
+        // Adjust for head yaw
+        double image_angle = (marker_center.first - cx_) / fx_;
+        return world_angle - head_yaw_ - image_angle;
+    }
+
+    int circle_circle_intersection(double x0, double y0, double r0,
+        double x1, double y1, double r1,
+        double *xi, double *yi,
+        double *xi_prime, double *yi_prime)
+    {
+    double a, dx, dy, d, h, rx, ry;
+    double x2, y2;
+
+    /* dx and dy are the vertical and horizontal distances between
+    * the circle centers.
+    */
+    dx = x1 - x0;
+    dy = y1 - y0;
+
+    /* Determine the straight-line distance between the centers. */
+    //d = sqrt((dy*dy) + (dx*dx));
+    d = hypot(dx,dy); // Suggested by Keith Briggs
+
+    /* Check for solvability. */
+    if (d > (r0 + r1))
+    {
+    /* no solution. circles do not intersect. */
+    return 0;
+    }
+    if (d < fabs(r0 - r1))
+    {
+    /* no solution. one circle is contained in the other */
+    return 0;
+    }
+
+    /* 'point 2' is the point where the line through the circle
+    * intersection points crosses the line between the circle
+    * centers.  
+    */
+
+    /* Determine the distance from point 0 to point 2. */
+    a = ((r0*r0) - (r1*r1) + (d*d)) / (2.0 * d) ;
+
+    /* Determine the coordinates of point 2. */
+    x2 = x0 + (dx * a/d);
+    y2 = y0 + (dy * a/d);
+
+    /* Determine the distance from point 2 to either of the
+    * intersection points.
+    */
+    h = sqrt((r0*r0) - (a*a));
+
+    /* Now determine the offsets of the intersection points from
+    * point 2.
+    */
+    rx = -dy * (h/d);
+    ry = dx * (h/d);
+
+    /* Determine the absolute intersection points. */
+    *xi = x2 + rx;
+    *xi_prime = x2 - rx;
+    *yi = y2 + ry;
+    *yi_prime = y2 - ry;
+
+    return 1;
+    }
+
+    int circle_centre(double x1, double y1, double x2, double y2, double alpha, double *xc1, double *yc1, double *xc2, double *yc2, double *r) {
+
+        bool debug = false;
+     
+        double d;
+        double h;
+        double theta;
+        double beta;
+        double delta_x;
+        double delta_y;
+        double alphar;
+        double temp_x;
+        double temp_y;
+     
+        alphar =  3.14159 * (alpha / 180.0); // convert to radians
+     
+        d = sqrt((x1-x2) * (x1-x2) + (y1-y2) * (y1-y2));
+     
+        if (alpha == 0 || alpha == 180) {
+           h = 0;
+           *r = 0;
+        }
+        else {
+           h  = (d / 2) / tan(alphar);
+           *r = (d / 2) / sin(alphar);
+        }
+     
+        theta = atan2(y2-y1, x2-x1);
+        beta  = theta - (3.14159 / 2);
+        delta_x = h * cos(beta);
+        delta_y = h * sin(beta);
+     
+        *xc1 = (x1 + x2)/2 - delta_x;  
+        *yc1 = (y1 + y2)/2 - delta_y;  
+     
+        /* note: there is a second circle that satisfies the required condition */
+        /* it is a reflection of the first circle in the given chord            */ 
+        /* its centre is obtained by adding the delta_x and delta_y             */
+     
+        *xc2 = (x1 + x2)/2 + delta_x; 
+        *yc2 = (y1 + y2)/2 + delta_y; 
+         
+        /* sort them in order of increasing distance from the origin */
+     
+        if ((*xc1 * *xc1 + *yc1 * *yc1) > (*xc2 * *xc2 + *yc2 * *yc2)) {
+           temp_x = *xc1;
+           *xc1 = *xc2;
+           *xc2 = temp_x;
+     
+           temp_y = *yc1;
+           *yc1 = *yc2;
+           *yc2 = temp_y;
+        }
+        return 1;
+    }
+
+    void publishPose() {
+        pose_pub_.publish(current_pose_);
+    }
+
+};
+
+int main(int argc, char** argv) {
+    ros::init(argc, argv, "robotLocalization");
+    RobotLocalizationNode node;
+    ros::spin();
+    cv::destroyAllWindows();
+    return 0;
 }
-
-
-std::string RobotLocalization::trim(const std::string& str) {
-    size_t first = str.find_first_not_of(" \t\r\n");
-    if (first == std::string::npos) return "";
-    size_t last = str.find_last_not_of(" \t\r\n");
-    return str.substr(first, (last - first + 1));
-}
-
-
-
-
-// #include "robotLocalization/robotLocalizationInterface.h"
-// #include <fstream>
-// #include <ros/package.h>
-// #include <opencv2/opencv.hpp>
-// #include <cv_bridge/cv_bridge.h>
-// #include <angles/angles.h>
-
-// RobotLocalization::RobotLocalization() : aruco_detected_(false) {
-//     // Subscribe to odometry and ArUco marker pose topics
-//     odom_sub_ = nh_.subscribe("/naoqi_driver/odom", 10, &RobotLocalization::odometryCallback, this);
-//     aruco_sub_ = nh_.subscribe("/aruco_localization/pose", 10, &RobotLocalization::arucoPoseCallback, this);
-
-//     // Publish estimated pose
-//     pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("/robot_localization/pose", 10);
-
-//     // Service to reset the pose
-//     reset_pose_service_ = nh_.advertiseService("/robot_localization/reset_pose", &RobotLocalization::resetPoseService, this);
-
-//     // Initialize current pose
-//     current_pose_.setIdentity();
-// }
-
-// void RobotLocalization::odometryCallback(const nav_msgs::Odometry::ConstPtr& msg) {
-//     odom_x_ = msg->pose.pose.position.x;
-//     odom_y_ = msg->pose.pose.position.y;
-//     odom_theta_ = tf::getYaw(msg->pose.pose.orientation);
-
-//     updateLocalization();
-// }
-
-// void RobotLocalization::arucoPoseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
-//     aruco_x_ = msg->pose.position.x;
-//     aruco_y_ = msg->pose.position.y;
-//     aruco_theta_ = tf::getYaw(msg->pose.orientation);
-//     aruco_detected_ = true;
-
-//     updateLocalization();
-// }
-
-// void RobotLocalization::updateLocalization() {
-//     tf::Transform odom_transform;
-//     odom_transform.setOrigin(tf::Vector3(odom_x_, odom_y_, 0.0));
-//     tf::Quaternion odom_q;
-//     odom_q.setRPY(0, 0, odom_theta_);
-//     odom_transform.setRotation(odom_q);
-
-//     if (aruco_detected_) {
-//         tf::Transform aruco_transform;
-//         aruco_transform.setOrigin(tf::Vector3(aruco_x_, aruco_y_, 0.0));
-//         tf::Quaternion aruco_q;
-//         aruco_q.setRPY(0, 0, aruco_theta_);
-//         aruco_transform.setRotation(aruco_q);
-
-//         // Blend odometry and ArUco localization (Kalman filter can be added)
-//         tf::Vector3 interpolated_position = current_pose_.getOrigin().lerp(aruco_transform.getOrigin(), 0.7);
-//         tf::Quaternion interpolated_rotation = current_pose_.getRotation().slerp(aruco_transform.getRotation(), 0.7);
-
-//         current_pose_.setOrigin(interpolated_position);
-//         current_pose_.setRotation(interpolated_rotation);
-//     } else {
-//         current_pose_ = odom_transform;
-//     }
-
-//     publishPose();
-// }
-
-// bool RobotLocalization::resetPoseService(cssr_system::SetPose::Request &req, cssr_system::SetPose::Response &res) {
-//     current_pose_.setOrigin(tf::Vector3(req.x, req.y, 0.0));
-//     tf::Quaternion q;
-//     q.setRPY(0, 0, req.theta);
-//     current_pose_.setRotation(q);
-
-//     ROS_INFO("Pose reset to x: %f, y: %f, theta: %f", req.x, req.y, req.theta);
-//     res.success = true;
-//     return true;
-// }
-
-// void RobotLocalization::publishPose() {
-//     geometry_msgs::PoseStamped pose_msg;
-//     pose_msg.header.stamp = ros::Time::now();
-//     pose_msg.header.frame_id = "map";
-
-//     pose_msg.pose.position.x = current_pose_.getOrigin().x();
-//     pose_msg.pose.position.y = current_pose_.getOrigin().y();
-//     pose_msg.pose.position.z = 0.0;
-//     tf::quaternionTFToMsg(current_pose_.getRotation(), pose_msg.pose.orientation);
-
-//     pose_pub_.publish(pose_msg);
-//     tf_broadcaster_.sendTransform(tf::StampedTransform(current_pose_, ros::Time::now(), "map", "base_footprint"));
-// }
