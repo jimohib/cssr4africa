@@ -1,5 +1,5 @@
 # Add the new executable with the separated source files
-add_executable(robotLocalization src/robotLocalizationApplication.cpp src/robotLocalizationImplementation.cpp)
+add_executable(robotLocalization src/robotLocalizationImplementation.cpp)
 # Set properties for the executable
 set_target_properties(robotLocalization PROPERTIES OUTPUT_NAME robotLocalization PREFIX "")
 # Link the required libraries

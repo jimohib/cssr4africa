@@ -13,7 +13,9 @@
 #include <yaml-cpp/yaml.h>
 #include <fstream>
 #include <map>
-#include <robot_localization/ResetPose.h>
+
+#include <cssr_system/ResetPose.h>
+#include <cssr_system/SetPose.h>
 #include "robotLocalization/robotLocalizationInterface.h"
 
 class RobotLocalizationNode {
@@ -158,7 +160,7 @@ private:
         }
     }
 
-    bool resetPoseCallback(robot_localization::ResetPose::Request& req, robot_localization::ResetPose::Response& res) {
+    bool resetPoseCallback(cssr_system::ResetPose::Request& req, cssr_system::ResetPose::Response& res) {
         if (computeAbsolutePose()) {
             res.success = true;
             ROS_INFO("Pose reset successfully");
