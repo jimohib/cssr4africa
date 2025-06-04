@@ -1,7 +1,7 @@
 FrontCamera =       /naoqi_driver/camera/front/image_raw
 StereoCamera =      /naoqi_driver/camera/stereo/image_raw
 RGBRealSense =      /camera/color/image_raw
-DepthRealSense =    /camera/depth/image_rect_raw
+DepthRealSense =    /camera/aligned_depth_to_color/image_raw
 Odometry =          /naoqi_driver/odom
 IMU =               /naoqi_driver/imu/base
 HeadYaw =           /joint_states

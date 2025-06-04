@@ -16,7 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   image_transport
   cv_bridge
-  tf
+  tf2
+  tf2_ros
   aruco
   angles
   actionlib
@@ -31,6 +32,7 @@ find_package(OpenCV REQUIRED)
 
 find_package(yaml-cpp REQUIRED)
 
+
 ################################################
 ## Declare ROS messages, services and actions ##
 ################################################
@@ -40,6 +42,7 @@ add_service_files(
   DIRECTORY
   robotLocalization/srv
   FILES
+  ResetPose.srv
   SetPose.srv
   
 )
@@ -87,7 +90,7 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS robotLocalization robotNavigation arucoLocalization
-  CATKIN_DEPENDS roscpp roslib std_msgs nav_msgs geometry_msgs sensor_msgs image_transport cv_bridge tf angles message_runtime
+  CATKIN_DEPENDS roscpp roslib std_msgs nav_msgs geometry_msgs sensor_msgs image_transport cv_bridge tf2 tf2_ros angles message_runtime
   DEPENDS OpenCV yaml-cpp
 )
 
