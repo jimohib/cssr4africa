@@ -13,6 +13,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
+#include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/buffer.h>
 #include <yaml-cpp/yaml.h>
 #include <fstream>
@@ -20,6 +21,7 @@
 #include <cssr_system/ResetPose.h>
 #include <cssr_system/SetPose.h>
 #include "robotLocalization/robotLocalizationInterface.h"
+
 
 class RobotLocalizationNode {
 public:
@@ -37,6 +39,8 @@ public:
         nh_.param("camera_info_timeout", camera_info_timeout_, 10.0); // Timeout in seconds
         nh_.param("map_frame", map_frame_, std::string("map"));
         nh_.param("odom_frame", odom_frame_, std::string("odom"));
+
+        tf_broadcaster_ = tf2_ros::TransformBroadcaster();
 
         // Load topic names
         loadTopicNames();
@@ -82,6 +86,7 @@ private:
     image_transport::ImageTransport it_;
     tf2_ros::Buffer tf_buffer_;
     tf2_ros::TransformListener tf_listener_;
+    tf2_ros::TransformBroadcaster tf_broadcaster_;
     ros::Subscriber odom_sub_, imu_sub_, joint_sub_, camera_info_sub_;
     image_transport::Subscriber image_sub_, depth_sub_;
     ros::Publisher pose_pub_;
@@ -454,12 +459,113 @@ private:
         }
     }
 
+    // bool computeAbsolutePoseWithDepth() {
+    //     if (latest_image_.empty() || latest_depth_.empty()) {
+    //         ROS_WARN("No image or depth data available");
+    //         return false;
+    //     }
+    
+    //     // Detect ArUco markers
+    //     std::vector<int> marker_ids;
+    //     std::vector<std::vector<cv::Point2f>> marker_corners;
+    //     cv::Ptr<cv::aruco::Dictionary> dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_100);
+    //     cv::aruco::detectMarkers(latest_image_, dictionary, marker_corners, marker_ids);
+
+    //     // Draw and publish marker image
+    //     cv::Mat output_image = latest_image_.clone();
+    //     if (!marker_ids.empty()) {
+    //         cv::aruco::drawDetectedMarkers(output_image, marker_corners, marker_ids);
+    //     }
+    //     sensor_msgs::ImagePtr img_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", output_image).toImageMsg();
+    //     image_pub_.publish(img_msg);
+    //     if (verbose_) {
+    //         ROS_INFO("Published marker image with %zu markers", marker_ids.size());
+    //     }
+    
+    //     if (marker_ids.size() < 3) {
+    //         ROS_WARN("Detected %zu markers, need at least 3", marker_ids.size());
+    //         return false;
+    //     }
+    
+    //     // Get distances from depth image
+    //     std::vector<std::tuple<int, double, double, double>> markers; // id, x, y, distance
+    //     for (size_t i = 0; i < marker_ids.size(); ++i) {
+    //         auto& corners = marker_corners[i];
+    //         double cx = (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4.0;
+    //         double cy = (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4.0;
+    //         float distance = latest_depth_.at<float>(int(cy), int(cx)) / 1000.0; // Convert mm to m
+    //         if (landmarks_.find(marker_ids[i]) != landmarks_.end() && !std::isnan(distance)) {
+    //             markers.push_back({marker_ids[i], landmarks_[marker_ids[i]].first, landmarks_[marker_ids[i]].second, distance});
+    //         }
+    //     }
+    
+    //     if (markers.size() < 3) {
+    //         ROS_WARN("Insufficient valid depth measurements");
+    //         return false;
+    //     }
+    
+    //     // Trilateration: Solve for (xr, yr) using three markers
+    //     double x1 = std::get<1>(markers[0]), y1 = std::get<2>(markers[0]), d1 = std::get<3>(markers[0]);
+    //     double x2 = std::get<1>(markers[1]), y2 = std::get<2>(markers[1]), d2 = std::get<3>(markers[1]);
+    //     double x3 = std::get<1>(markers[2]), y3 = std::get<2>(markers[2]), d3 = std::get<3>(markers[2]);
+    
+    //     // Simplified trilateration (intersection of two circles)
+    //     double x12 = x2 - x1, y12 = y2 - y1;
+    //     double d12 = std::sqrt(x12 * x12 + y12 * y12);
+    //     double a = (d1 * d1 - d2 * d2 + d12 * d12) / (2.0 * d12);
+    //     double h = std::sqrt(d1 * d1 - a * a);
+    //     double xm = x1 + a * x12 / d12;
+    //     double ym = y1 + a * y12 / d12;
+    
+    //     double xr1 = xm + h * (y2 - y1) / d12;
+    //     double yr1 = ym - h * (x2 - x1) / d12;
+    //     double xr2 = xm - h * (y2 - y1) / d12;
+    //     double yr2 = ym + h * (x2 - x1) / d12;
+    
+    //     // Check which solution satisfies the third circle
+    //     double dist1 = std::sqrt((xr1 - x3) * (xr1 - x3) + (yr1 - y3) * (yr1 - y3));
+    //     double dist2 = std::sqrt((xr2 - x3) * (xr2 - x3) + (yr2 - y3) * (yr2 - y3));
+    //     double xr, yr;
+    //     if (std::abs(dist1 - d3) < std::abs(dist2 - d3)) {
+    //         xr = xr1;
+    //         yr = yr1;
+    //     } else {
+    //         xr = xr2;
+    //         yr = yr2;
+    //     }
+    
+    //     // Compute yaw
+    //     double theta = computeYaw({marker_corners[0][0].x, marker_corners[0][0].y}, x1, y1, xr, yr);
+    
+    //     // Update pose
+    //     baseline_pose_.x = xr;
+    //     baseline_pose_.y = yr;
+    //     baseline_pose_.theta = theta; // Radians
+    //     current_pose_ = baseline_pose_;
+    //     last_absolute_pose_time_ = ros::Time::now();
+    
+    //     // // Publish image
+    //     // cv::Mat output_image = latest_image_.clone();
+    //     // cv::aruco::drawDetectedMarkers(output_image, marker_corners, marker_ids);
+    //     // sensor_msgs::ImagePtr img_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", output_image).toImageMsg();
+    //     // image_pub_.publish(img_msg);
+    
+
+    //     ROS_INFO("Robot Pose (Depth): x=%.3f, y=%.3f, theta=%.3f degrees", xr, yr, theta * 180.0 / M_PI);
+    //     cv::imshow("ArUco Markers", output_image);
+    //     cv::waitKey(1);
+
+    
+    //     publishPose();
+    //     return true;
+    // }
+
     bool computeAbsolutePoseWithDepth() {
         if (latest_image_.empty() || latest_depth_.empty()) {
             ROS_WARN("No image or depth data available");
             return false;
         }
-    
+
         // Detect ArUco markers
         std::vector<int> marker_ids;
         std::vector<std::vector<cv::Point2f>> marker_corners;
@@ -476,81 +582,69 @@ private:
         if (verbose_) {
             ROS_INFO("Published marker image with %zu markers", marker_ids.size());
         }
-    
+
         if (marker_ids.size() < 3) {
-            ROS_WARN("Detected %zu markers, need at least 3", marker_ids.size());
+            ROS_WARN("Detected %zu markers, need at least 3 for pose estimation", marker_ids.size());
             return false;
         }
-    
-        // Get distances from depth image
-        std::vector<std::tuple<int, double, double, double>> markers; // id, x, y, distance
+
+        // Collect valid markers
+        std::vector<std::tuple<int, double, double, double, cv::Point2f>> markers; // id, x, y, distance, center
         for (size_t i = 0; i < marker_ids.size(); ++i) {
             auto& corners = marker_corners[i];
             double cx = (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4.0;
             double cy = (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4.0;
             float distance = latest_depth_.at<float>(int(cy), int(cx)) / 1000.0; // Convert mm to m
-            if (landmarks_.find(marker_ids[i]) != landmarks_.end() && !std::isnan(distance)) {
-                markers.push_back({marker_ids[i], landmarks_[marker_ids[i]].first, landmarks_[marker_ids[i]].second, distance});
+            if (landmarks_.find(marker_ids[i]) != landmarks_.end() && !std::isnan(distance) && distance > 0.1 && distance < 10.0) {
+                markers.push_back({marker_ids[i], landmarks_[marker_ids[i]].first, landmarks_[marker_ids[i]].second, distance, cv::Point2f(cx, cy)});
             }
         }
-    
+
         if (markers.size() < 3) {
-            ROS_WARN("Insufficient valid depth measurements");
+            ROS_WARN("Insufficient valid depth measurements (%zu valid markers)", markers.size());
             return false;
         }
-    
-        // Trilateration: Solve for (xr, yr) using three markers
-        double x1 = std::get<1>(markers[0]), y1 = std::get<2>(markers[0]), d1 = std::get<3>(markers[0]);
-        double x2 = std::get<1>(markers[1]), y2 = std::get<2>(markers[1]), d2 = std::get<3>(markers[1]);
-        double x3 = std::get<1>(markers[2]), y3 = std::get<2>(markers[2]), d3 = std::get<3>(markers[2]);
-    
-        // Simplified trilateration (intersection of two circles)
-        double x12 = x2 - x1, y12 = y2 - y1;
-        double d12 = std::sqrt(x12 * x12 + y12 * y12);
-        double a = (d1 * d1 - d2 * d2 + d12 * d12) / (2.0 * d12);
-        double h = std::sqrt(d1 * d1 - a * a);
-        double xm = x1 + a * x12 / d12;
-        double ym = y1 + a * y12 / d12;
-    
-        double xr1 = xm + h * (y2 - y1) / d12;
-        double yr1 = ym - h * (x2 - x1) / d12;
-        double xr2 = xm - h * (y2 - y1) / d12;
-        double yr2 = ym + h * (x2 - x1) / d12;
-    
-        // Check which solution satisfies the third circle
-        double dist1 = std::sqrt((xr1 - x3) * (xr1 - x3) + (yr1 - y3) * (yr1 - y3));
-        double dist2 = std::sqrt((xr2 - x3) * (xr2 - x3) + (yr2 - y3) * (yr2 - y3));
-        double xr, yr;
-        if (std::abs(dist1 - d3) < std::abs(dist2 - d3)) {
-            xr = xr1;
-            yr = yr1;
-        } else {
-            xr = xr2;
-            yr = yr2;
+
+        // Simple least-squares trilateration
+        double sum_x = 0.0, sum_y = 0.0;
+        int valid_count = 0;
+        for (size_t i = 0; i < markers.size(); ++i) {
+            double x_i = std::get<1>(markers[i]), y_i = std::get<2>(markers[i]), d_i = std::get<3>(markers[i]);
+            // Estimate robot position for each marker
+            double dx = (std::get<4>(markers[i]).x - cx_) / fx_;
+            double dy = (std::get<4>(markers[i]).y - cy_) / fy_;
+            double angle = std::atan2(dy, dx);
+            double world_angle = angle + (use_head_yaw_ ? head_yaw_ : 0.0);
+            double xr_i = x_i - d_i * std::cos(world_angle);
+            double yr_i = y_i - d_i * std::sin(world_angle);
+            sum_x += xr_i;
+            sum_y += yr_i;
+            valid_count++;
         }
-    
-        // Compute yaw
-        double theta = computeYaw({marker_corners[0][0].x, marker_corners[0][0].y}, x1, y1, xr, yr);
-    
+
+        if (valid_count == 0) {
+            ROS_WARN("No valid position estimates");
+            return false;
+        }
+
+        double xr = sum_x / valid_count;
+        double yr = sum_y / valid_count;
+
+        // Compute yaw using the first marker
+        double x1 = std::get<1>(markers[0]), y1 = std::get<2>(markers[0]);
+        cv::Point2f center = std::get<4>(markers[0]);
+        double theta = computeYaw({center.x, center.y}, x1, y1, xr, yr);
+
         // Update pose
         baseline_pose_.x = xr;
         baseline_pose_.y = yr;
-        baseline_pose_.theta = theta; // Radians
+        baseline_pose_.theta = theta;
         current_pose_ = baseline_pose_;
         last_absolute_pose_time_ = ros::Time::now();
-    
-        // // Publish image
-        // cv::Mat output_image = latest_image_.clone();
-        // cv::aruco::drawDetectedMarkers(output_image, marker_corners, marker_ids);
-        // sensor_msgs::ImagePtr img_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", output_image).toImageMsg();
-        // image_pub_.publish(img_msg);
-    
 
         ROS_INFO("Robot Pose (Depth): x=%.3f, y=%.3f, theta=%.3f degrees", xr, yr, theta * 180.0 / M_PI);
         cv::imshow("ArUco Markers", output_image);
         cv::waitKey(1);
-
-    
         publishPose();
         return true;
     }
@@ -565,15 +659,42 @@ private:
         return angle * 180.0 / M_PI; // Convert to degrees
     }
 
+    // double computeYaw(const std::pair<double, double>& marker_center, double marker_x, double marker_y, double robot_x, double robot_y) {
+    //     // Compute direction to marker in world frame
+    //     double dx = marker_x - robot_x;
+    //     double dy = marker_y - robot_y;
+    //     double world_angle = std::atan2(dy, dx);
+    //     double image_angle = (marker_center.first - cx_) / fx_;
+    //     double yaw = world_angle - (use_head_yaw_ ? head_yaw_ : 0.0) - image_angle; // Radians
+    //     if (verbose_) {
+    //         ROS_INFO("Head yaw: %.3f radians", head_yaw_);
+    //     }
+    //     return yaw;
+    // }
+
     double computeYaw(const std::pair<double, double>& marker_center, double marker_x, double marker_y, double robot_x, double robot_y) {
-        // Compute direction to marker in world frame
         double dx = marker_x - robot_x;
         double dy = marker_y - robot_y;
         double world_angle = std::atan2(dy, dx);
         double image_angle = (marker_center.first - cx_) / fx_;
-        double yaw = world_angle - (use_head_yaw_ ? head_yaw_ : 0.0) - image_angle; // Radians
+
+        double camera_yaw = 0.0;
+        try {
+            geometry_msgs::TransformStamped transform = tf_buffer_.lookupTransform("base_link", "camera_color_optical_frame", ros::Time(0), ros::Duration(0.1));
+            tf2::Quaternion q(transform.transform.rotation.x, transform.transform.rotation.y, transform.transform.rotation.z, transform.transform.rotation.w);
+            tf2::Matrix3x3 m(q);
+            double roll, pitch, yaw;
+            m.getRPY(roll, pitch, yaw);
+            camera_yaw = yaw;
+        } catch (const tf2::TransformException& ex) {
+            ROS_ERROR("Failed to get camera transform: %s", ex.what());
+            return 0.0; // Fallback to avoid invalid yaw
+        }
+
+        double yaw = world_angle - (use_head_yaw_ ? head_yaw_ : 0.0) - image_angle - camera_yaw;
         if (verbose_) {
-            ROS_INFO("Head yaw: %.3f radians", head_yaw_);
+            ROS_INFO("Head yaw: %.3f, Image angle: %.3f, Camera yaw: %.3f, World angle: %.3f, Yaw: %.3f radians",
+                    head_yaw_, image_angle, camera_yaw, world_angle, yaw);
         }
         return yaw;
     }
@@ -696,8 +817,25 @@ private:
         return 1;
     }
 
+    // void publishPose() {
+    //     pose_pub_.publish(current_pose_);
+    // }
+
     void publishPose() {
         pose_pub_.publish(current_pose_);
+
+        // Publish map -> odom transform
+        geometry_msgs::TransformStamped transform;
+        transform.header.stamp = ros::Time::now();
+        transform.header.frame_id = map_frame_;
+        transform.child_frame_id = odom_frame_;
+        transform.transform.translation.x = current_pose_.x - last_odom_pose_.x;
+        transform.transform.translation.y = current_pose_.y - last_odom_pose_.y;
+        transform.transform.translation.z = 0.0;
+        tf2::Quaternion q;
+        q.setRPY(0, 0, current_pose_.theta - last_odom_pose_.theta);
+        transform.transform.rotation = tf2::toMsg(q);
+        tf_broadcaster_.sendTransform(transform);
     }
 
 };
