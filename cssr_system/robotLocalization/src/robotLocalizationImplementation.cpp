@@ -107,6 +107,7 @@ private:
     double head_yaw_ = 0.0;
     double camera_height_ = 1.225;
     double fx_ = 0.0, fy_ = 0.0, cx_ = 0.0, cy_ = 0.0; // Camera intrinsics initialize
+    
 
     void loadTopicNames() {
         try {
