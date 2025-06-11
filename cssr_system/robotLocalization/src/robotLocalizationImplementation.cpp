@@ -7,6 +7,7 @@
 #include <geometry_msgs/Pose2D.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <cv_bridge/cv_bridge.h>
+#include <angles/angles.h>
 #include <opencv2/opencv.hpp>
 #include <opencv2/aruco.hpp>
 #include <image_transport/image_transport.h>
@@ -65,6 +66,10 @@ public:
         reset_srv_ = nh_.advertiseService("/robotLocalization/reset_pose", &RobotLocalizationNode::resetPoseCallback, this);
         setpose_srv_ = nh_.advertiseService("/robotLocalization/set_pose", &RobotLocalizationNode::setPoseCallback, this);
 
+
+        initializePoseAdjustments();
+
+        
         // Initialize pose
         current_pose_.x = 0.0;
         current_pose_.y = 0.0;
@@ -107,7 +112,24 @@ private:
     double head_yaw_ = 0.0;
     double camera_height_ = 1.225;
     double fx_ = 0.0, fy_ = 0.0, cx_ = 0.0, cy_ = 0.0; // Camera intrinsics initialize
+
+    bool first_odom_received_ = false;
+    double initial_robot_x=0.0, initial_robot_y=0.0, initial_robot_theta=0.0;
+    double adjustment_x_=0.0, adjustment_y_=0.0, adjustment_theta_=0.0;
+    double odom_x_=0.0, odom_y_=0.0, odom_theta_=0.0;
     
+
+
+    void initializePoseAdjustments() {
+        ros::Rate rate(10);
+        while (!first_odom_received_ && ros::ok()) {
+            ros::spinOnce();
+            rate.sleep();
+        }
+        adjustment_x_ = initial_robot_x - odom_x_;
+        adjustment_y_ = initial_robot_y - odom_y_;
+        adjustment_theta_ = angles::normalize_angle(initial_robot_theta - odom_theta_);
+    }
 
     void loadTopicNames() {
         try {
