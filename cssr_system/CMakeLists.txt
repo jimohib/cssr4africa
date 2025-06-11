@@ -51,7 +51,7 @@ add_service_files(
   DIRECTORY
   robotNavigation/srv
   FILES
-  set_goal.srv
+  setGoal.srv
   
 )
 

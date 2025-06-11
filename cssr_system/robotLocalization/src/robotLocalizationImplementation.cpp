@@ -21,6 +21,11 @@
 #include <cssr_system/SetPose.h>
 #include "robotLocalization/robotLocalizationInterface.h"
 
+struct Landmark3D {
+    int id;
+    double x, y, z;
+};
+
 class RobotLocalizationNode {
 public:
     RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(), tf_listener_(tf_buffer_) {
@@ -95,10 +100,12 @@ private:
     std::string head_yaw_joint_name_, map_frame_, odom_frame_;
     geometry_msgs::Pose2D current_pose_, baseline_pose_, last_odom_pose_;
     ros::Time last_absolute_pose_time_;
-    std::map<int, std::pair<double, double>> landmarks_;
+    std::map<int, Landmark3D> landmarks3D_;
+    std::map<int, std::pair<double, double>> projected_landmarks_;
     std::map<std::string, std::string> topic_map_;
     cv::Mat latest_image_, latest_depth_;
     double head_yaw_ = 0.0;
+    double camera_height_ = 1.225;
     double fx_ = 0.0, fy_ = 0.0, cx_ = 0.0, cy_ = 0.0; // Camera intrinsics initialize
 
     void loadTopicNames() {
@@ -133,16 +140,38 @@ private:
                 return;
             }
             for (const auto& marker : config["landmarks"]) {
-                if (!marker["id"] || !marker["x"] || !marker["y"]) {
+                if (!marker["id"] || !marker["x"] || !marker["y"] || !marker["z"]) {
                     ROS_WARN("Skipping invalid landmark entry in %s", config_file_.c_str());
                     continue;
                 }
-                int id = marker["id"].as<int>();
-                double x = marker["x"].as<double>();
-                double y = marker["y"].as<double>();
-                landmarks_[id] = {x, y};
+                Landmark3D lm;
+                lm.id = marker["id"].as<int>();
+                lm.x = marker["x"].as<double>();
+                lm.y = marker["y"].as<double>();
+                lm.z = marker["z"] ? marker["z"].as<double>() : camera_height_; // Fallback to camera height
+
+                landmarks3D_[lm.id] = lm;
+
+                // Project to camera plane
+                double dz = lm.z - camera_height_;
+                // Compute distance in 3D
+                double distance = std::sqrt(lm.x * lm.x + lm.y * lm.y + dz * dz);
+                if (distance < 0.1) { // Avoid division by zero
+                    ROS_WARN("Landmark %d too close to camera, skipping projection", lm.id);
+                    continue;
+                }
+                // Project to 2D plane at camera height
+                double scale = std::sqrt(lm.x * lm.x + lm.y * lm.y) / distance;
+                double x_proj = lm.x * scale;
+                double y_proj = lm.y * scale;
+
+                projected_landmarks_[lm.id] = {x_proj, y_proj};
+
+                if (verbose_) {
+                    ROS_INFO("Loaded landmark ID %d: (%.2f, %.2f, %.2f) -> Projected (%.2f, %.2f)",
+                             lm.id, lm.x, lm.y, lm.z, x_proj, y_proj);
+                }
             }
-            ROS_INFO("Loaded %zu landmarks from %s", landmarks_.size(), config_file_.c_str());
         } catch (const YAML::BadFile& e) {
             ROS_ERROR("Failed to open landmarks file %s: %s", config_file_.c_str(), e.what());
         } catch (const YAML::Exception& e) {
@@ -328,7 +357,7 @@ private:
     }
 
     bool computeAbsolutePose() {
-        if (landmarks_.empty()) {
+        if (projected_landmarks_.empty()) {
             ROS_WARN("No landmarks loaded");
             return false;
         }
@@ -381,14 +410,14 @@ private:
 
             // Assume first three detected markers are used
             int id1 = marker_ids[0], id2 = marker_ids[1], id3 = marker_ids[2];
-            if (landmarks_.find(id1) == landmarks_.end() || landmarks_.find(id2) == landmarks_.end() || landmarks_.find(id3) == landmarks_.end()) {
+            if (projected_landmarks_.find(id1) == projected_landmarks_.end() || projected_landmarks_.find(id2) == projected_landmarks_.end() || projected_landmarks_.find(id3) == projected_landmarks_.end()) {
                 ROS_WARN("Unknown marker IDs detected: %d, %d, %d", id1, id2, id3);
                 return false;
             }
 
-            double x1 = landmarks_[id1].first, y1 = landmarks_[id1].second;
-            double x2 = landmarks_[id2].first, y2 = landmarks_[id2].second;
-            double x3 = landmarks_[id3].first, y3 = landmarks_[id3].second;
+            double x1 = projected_landmarks_[id1].first, y1 = projected_landmarks_[id1].second;
+            double x2 = projected_landmarks_[id2].first, y2 = projected_landmarks_[id2].second;
+            double x3 = projected_landmarks_[id3].first, y3 = projected_landmarks_[id3].second;
 
             // Check for collinear markers
             double cross_product = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
@@ -489,9 +518,22 @@ private:
             double cx = (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4.0;
             double cy = (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4.0;
             float distance = latest_depth_.at<float>(int(cy), int(cx)) / 1000.0; // Convert mm to m
-            if (landmarks_.find(marker_ids[i]) != landmarks_.end() && !std::isnan(distance)) {
-                markers.push_back({marker_ids[i], landmarks_[marker_ids[i]].first, landmarks_[marker_ids[i]].second, distance});
+            if (projected_landmarks_.find(marker_ids[i]) != projected_landmarks_.end() && !std::isnan(distance)) {
+                markers.push_back({marker_ids[i], projected_landmarks_[marker_ids[i]].first, projected_landmarks_[marker_ids[i]].second, distance});
             }
+            // ROS_INFO("Marker ID %d: Distance = %.3f m", marker_ids[i], distance);
+        }
+
+        std::sort(markers.begin(), markers.end(), 
+            [](const std::tuple<int, double, double, double>& a, 
+            const std::tuple<int, double, double, double>& b) {
+                return std::get<3>(a) < std::get<3>(b); // Sort by distance (closest first)
+            });
+
+        ROS_INFO("Using %zu markers:", markers.size());
+        for (const auto& marker : markers) {
+            ROS_INFO("  Marker ID %d: Position (%.3f, %.3f), Distance = %.3f m", 
+                    std::get<0>(marker), std::get<1>(marker), std::get<2>(marker), std::get<3>(marker));
         }
     
         if (markers.size() < 3) {
