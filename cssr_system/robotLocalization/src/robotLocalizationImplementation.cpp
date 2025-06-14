@@ -113,6 +113,9 @@ private:
     double camera_height_ = 1.225;
     double fx_ = 0.0, fy_ = 0.0, cx_ = 0.0, cy_ = 0.0; // Camera intrinsics initialize
 
+
+    geometry_msgs::Pose2D relative_pose, last_reset_pose;
+    nav_msgs::Odometry previous_odom_;
     bool first_odom_received_ = false;
     double initial_robot_x=0.0, initial_robot_y=0.0, initial_robot_theta=0.0;
     double adjustment_x_=0.0, adjustment_y_=0.0, adjustment_theta_=0.0;
@@ -242,66 +245,99 @@ private:
         }
     }
 
+    // void odomCallback(const nav_msgs::Odometry::ConstPtr& msg) {
+    //     // Transform odometry pose to map frame
+    //     geometry_msgs::PoseStamped odom_pose, map_pose;
+    //     odom_pose.header = msg->header;
+    //     odom_pose.pose = msg->pose.pose;
+    //     try {
+    //         tf_buffer_.transform(odom_pose, map_pose, map_frame_, ros::Duration(0.1));
+    //     } catch (const tf2::TransformException& ex) {
+    //         ROS_WARN("Failed to transform odometry pose: %s", ex.what());
+    //         return;
+    //     }
+
+    //     // Extract x, y, theta from transformed pose
+    //     double x = map_pose.pose.position.x;
+    //     double y = map_pose.pose.position.y;
+    //     tf2::Quaternion q(
+    //         map_pose.pose.orientation.x,
+    //         map_pose.pose.orientation.y,
+    //         map_pose.pose.orientation.z,
+    //         map_pose.pose.orientation.w);
+    //     tf2::Matrix3x3 m(q);
+    //     double roll, pitch, yaw;
+    //     m.getRPY(roll, pitch, yaw);
+
+    //     // Compute deltas relative to last odometry pose
+    //     double delta_x = x - last_odom_pose_.x;
+    //     double delta_y = y - last_odom_pose_.y;
+    //     double delta_theta = yaw - last_odom_pose_.theta;
+    //     while (delta_theta > M_PI) delta_theta -= 2 * M_PI;
+    //     while (delta_theta < -M_PI) delta_theta += 2 * M_PI;
+
+    //     // Update last odometry pose
+    //     last_odom_pose_.x = x;
+    //     last_odom_pose_.y = y;
+    //     last_odom_pose_.theta = yaw;
+
+    //     // Apply deltas to baseline pose
+    //     if (last_absolute_pose_time_.isValid() && (ros::Time::now() - last_absolute_pose_time_).toSec() < absolute_pose_timeout_) {
+    //         // Rotate delta_x, delta_y by baseline theta
+    //         double cos_theta = std::cos(baseline_pose_.theta);
+    //         double sin_theta = std::sin(baseline_pose_.theta);
+    //         current_pose_.x = baseline_pose_.x + delta_x * cos_theta + delta_y * sin_theta;
+    //         current_pose_.y = baseline_pose_.y - delta_x * sin_theta + delta_y * cos_theta;
+    //         current_pose_.theta = baseline_pose_.theta + delta_theta;
+    //         while (current_pose_.theta > M_PI) current_pose_.theta -= 2 * M_PI;
+    //         while (current_pose_.theta < -M_PI) current_pose_.theta += 2 * M_PI;
+    //     } else {
+    //         // Use raw odometry if no recent absolute pose
+    //         current_pose_.x = x;
+    //         current_pose_.y = y;
+    //         current_pose_.theta = yaw;
+    //     }
+
+    //     publishPose();
+    //     if (verbose_) {
+    //         ROS_INFO("Odometry update: x=%.3f, y=%.3f, theta=%.3f degrees, deltas: dx=%.3f, dy=%.3f, dtheta=%.3f degrees",
+    //                  current_pose_.x, current_pose_.y, current_pose_.theta * 180.0 / M_PI,
+    //                  delta_x, delta_y, delta_theta * 180.0 / M_PI);
+    //     }
+    // }
+
     void odomCallback(const nav_msgs::Odometry::ConstPtr& msg) {
-        // Transform odometry pose to map frame
-        geometry_msgs::PoseStamped odom_pose, map_pose;
-        odom_pose.header = msg->header;
-        odom_pose.pose = msg->pose.pose;
-        try {
-            tf_buffer_.transform(odom_pose, map_pose, map_frame_, ros::Duration(0.1));
-        } catch (const tf2::TransformException& ex) {
-            ROS_WARN("Failed to transform odometry pose: %s", ex.what());
-            return;
-        }
+    odom_x_ = msg->pose.pose.position.x;
+    odom_y_ = msg->pose.pose.position.y;
+    odom_theta_ = 2 * atan2(msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
+    first_odom_received_ = true;
 
-        // Extract x, y, theta from transformed pose
-        double x = map_pose.pose.position.x;
-        double y = map_pose.pose.position.y;
-        tf2::Quaternion q(
-            map_pose.pose.orientation.x,
-            map_pose.pose.orientation.y,
-            map_pose.pose.orientation.z,
-            map_pose.pose.orientation.w);
-        tf2::Matrix3x3 m(q);
-        double roll, pitch, yaw;
-        m.getRPY(roll, pitch, yaw);
+    double x = odom_x_ + adjustment_x_ - initial_robot_x;
+    double y = odom_y_ + adjustment_y_ - initial_robot_y;
 
-        // Compute deltas relative to last odometry pose
-        double delta_x = x - last_odom_pose_.x;
-        double delta_y = y - last_odom_pose_.y;
-        double delta_theta = yaw - last_odom_pose_.theta;
-        while (delta_theta > M_PI) delta_theta -= 2 * M_PI;
-        while (delta_theta < -M_PI) delta_theta += 2 * M_PI;
+    double current_x = x * cos(adjustment_theta_) - y * sin(adjustment_theta_);
+    double current_y = x * sin(adjustment_theta_) + y * cos(adjustment_theta_);
 
-        // Update last odometry pose
-        last_odom_pose_.x = x;
-        last_odom_pose_.y = y;
-        last_odom_pose_.theta = yaw;
+    current_x += initial_robot_x;
+    current_y += initial_robot_y;
 
-        // Apply deltas to baseline pose
-        if (last_absolute_pose_time_.isValid() && (ros::Time::now() - last_absolute_pose_time_).toSec() < absolute_pose_timeout_) {
-            // Rotate delta_x, delta_y by baseline theta
-            double cos_theta = std::cos(baseline_pose_.theta);
-            double sin_theta = std::sin(baseline_pose_.theta);
-            current_pose_.x = baseline_pose_.x + delta_x * cos_theta + delta_y * sin_theta;
-            current_pose_.y = baseline_pose_.y - delta_x * sin_theta + delta_y * cos_theta;
-            current_pose_.theta = baseline_pose_.theta + delta_theta;
-            while (current_pose_.theta > M_PI) current_pose_.theta -= 2 * M_PI;
-            while (current_pose_.theta < -M_PI) current_pose_.theta += 2 * M_PI;
-        } else {
-            // Use raw odometry if no recent absolute pose
-            current_pose_.x = x;
-            current_pose_.y = y;
-            current_pose_.theta = yaw;
-        }
+    double current_theta = odom_theta_ + adjustment_theta_;
 
-        publishPose();
-        if (verbose_) {
-            ROS_INFO("Odometry update: x=%.3f, y=%.3f, theta=%.3f degrees, deltas: dx=%.3f, dy=%.3f, dtheta=%.3f degrees",
-                     current_pose_.x, current_pose_.y, current_pose_.theta * 180.0 / M_PI,
-                     delta_x, delta_y, delta_theta * 180.0 / M_PI);
-        }
+    relative_pose.x = current_x;
+    relative_pose.y = current_y;
+    relative_pose.theta = current_theta;
+
+    geometry_msgs::Pose2D pose_msg;
+    pose_msg.x = relative_pose.x;
+    pose_msg.y = relative_pose.y;
+    pose_msg.theta = angles::to_degrees(relative_pose.theta);
+
+    pose_pub_.publish(pose_msg);
+
+    if (verbose_) {
+        ROS_INFO_THROTTLE(1, "Odometry: position = (%5.3f, %5.3f) orientation = %5.3f degrees", current_x, current_y, angles::to_degrees(current_theta));
     }
+}
 
     void imuCallback(const sensor_msgs::Imu::ConstPtr& msg) {
         // Optional using IMU angular velocity
@@ -348,18 +384,36 @@ private:
         }
     }
 
+    // bool setPoseCallback(cssr_system::SetPose::Request& req, cssr_system::SetPose::Response& res) {
+    //     baseline_pose_.x = req.x;
+    //     baseline_pose_.y = req.y;
+    //     baseline_pose_.theta = req.theta * M_PI / 180.0; // Convert degrees to radians
+    //     while (baseline_pose_.theta > M_PI) baseline_pose_.theta -= 2 * M_PI;
+    //     while (baseline_pose_.theta < -M_PI) baseline_pose_.theta += 2 * M_PI;
+    //     current_pose_ = baseline_pose_;
+    //     last_absolute_pose_time_ = ros::Time::now();
+    //     publishPose();
+    //     if (verbose_) {
+    //         ROS_INFO("Manually set pose: x=%.3f, y=%.3f, theta=%.3f degrees", current_pose_.x, current_pose_.y, req.theta);
+    //     }
+    //     res.success = true;
+    //     return true;
+    // }
+
     bool setPoseCallback(cssr_system::SetPose::Request& req, cssr_system::SetPose::Response& res) {
-        baseline_pose_.x = req.x;
-        baseline_pose_.y = req.y;
-        baseline_pose_.theta = req.theta * M_PI / 180.0; // Convert degrees to radians
-        while (baseline_pose_.theta > M_PI) baseline_pose_.theta -= 2 * M_PI;
-        while (baseline_pose_.theta < -M_PI) baseline_pose_.theta += 2 * M_PI;
-        current_pose_ = baseline_pose_;
-        last_absolute_pose_time_ = ros::Time::now();
-        publishPose();
-        if (verbose_) {
-            ROS_INFO("Manually set pose: x=%.3f, y=%.3f, theta=%.3f degrees", current_pose_.x, current_pose_.y, req.theta);
+        initial_robot_x = req.x;
+        initial_robot_y = req.y;
+        initial_robot_theta = angles::from_degrees(req.theta);
+
+        ros::Rate rate(10);
+        while (!first_odom_received_ && ros::ok()) {
+            ros::spinOnce();
+            rate.sleep();
         }
+
+        adjustment_x_ = initial_robot_x - odom_x_;
+        adjustment_y_ = initial_robot_y - odom_y_;
+        adjustment_theta_ = initial_robot_theta - odom_theta_;
         res.success = true;
         return true;
     }
@@ -496,12 +550,20 @@ private:
             // sensor_msgs::ImagePtr img_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", output_image).toImageMsg();
             // image_pub_.publish(img_msg);
 
+            // Alternate update pose
+            initial_robot_x = xr;
+            initial_robot_y = yr;
+            initial_robot_theta = theta;
+            adjustment_x_ = initial_robot_x - odom_x_;
+            adjustment_y_ = initial_robot_y - odom_y_;
+            adjustment_theta_ = initial_robot_theta - odom_theta_;
+
 
             ROS_INFO("Robot Pose: x=%.3f, y=%.3f, theta=%.3f degrees", xr, yr, theta * 180.0 / M_PI);
             cv::imshow("ArUco Markers", output_image);
             cv::waitKey(1);
 
-            publishPose();
+            // publishPose();
             return true;
         }
     }
@@ -553,7 +615,7 @@ private:
                 return std::get<3>(a) < std::get<3>(b); // Sort by distance (closest first)
             });
 
-        ROS_INFO("Using %zu markers:", markers.size());
+        ROS_INFO("Detected %zu markers:", markers.size());
         for (const auto& marker : markers) {
             ROS_INFO("  Marker ID %d: Position (%.3f, %.3f), Distance = %.3f m", 
                     std::get<0>(marker), std::get<1>(marker), std::get<2>(marker), std::get<3>(marker));
@@ -568,6 +630,13 @@ private:
         double x1 = std::get<1>(markers[0]), y1 = std::get<2>(markers[0]), d1 = std::get<3>(markers[0]);
         double x2 = std::get<1>(markers[1]), y2 = std::get<2>(markers[1]), d2 = std::get<3>(markers[1]);
         double x3 = std::get<1>(markers[2]), y3 = std::get<2>(markers[2]), d3 = std::get<3>(markers[2]);
+
+         // Check for collinear markers
+        double cross_product = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+        if (std::abs(cross_product) < 0.01) {
+            ROS_WARN("Markers are nearly collinear, triangulation may be inaccurate");
+            return false;
+        }
     
         // Simplified trilateration (intersection of two circles)
         double x12 = x2 - x1, y12 = y2 - y1;
@@ -610,13 +679,20 @@ private:
         // sensor_msgs::ImagePtr img_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", output_image).toImageMsg();
         // image_pub_.publish(img_msg);
     
+        // Alternate update pose
+        initial_robot_x = xr;
+        initial_robot_y = yr;
+        initial_robot_theta = theta;
+        adjustment_x_ = initial_robot_x - odom_x_;
+        adjustment_y_ = initial_robot_y - odom_y_;
+        adjustment_theta_ = initial_robot_theta - odom_theta_;
 
         ROS_INFO("Robot Pose (Depth): x=%.3f, y=%.3f, theta=%.3f degrees", xr, yr, theta * 180.0 / M_PI);
         cv::imshow("ArUco Markers", output_image);
         cv::waitKey(1);
 
     
-        publishPose();
+        // publishPose();
         return true;
     }
 
@@ -679,7 +755,7 @@ private:
     */
 
     /* Determine the distance from point 0 to point 2. */
-    a = ((r0*r0) - (r1*r1) + (d*d)) / (2.0 * d) ;
+    a = ((r0*r0) - (r1*r1) + (d*d)) / (2.0 * d);
 
     /* Determine the coordinates of point 2. */
     x2 = x0 + (dx * a/d);
