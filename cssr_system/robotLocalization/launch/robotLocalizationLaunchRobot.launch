@@ -13,6 +13,8 @@
     </include>
 
     <node pkg="tf" type="static_transform_publisher" name="odom_to_map" args="0 0 0 0 0 0 map odom 100" />
+    <node pkg="tf" type="static_transform_publisher" name="head_to_camera_link"
+      args="0.1 0.0 0.2 0.0 0.0 0.0 Head camera_link 100" />
 
     <!-- Launch robot_localization_node -->
     <node pkg="cssr_system" type="robotLocalization" name="robotLocalization" output="screen">
