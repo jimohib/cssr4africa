@@ -20,10 +20,10 @@
     <node pkg="cssr_system" type="robotLocalization" name="robotLocalization" output="screen">
         <!-- Parameters for robot_localization_node -->
         <param name="verbose" value="false" />
-        <param name="use_depth" value="true" />
+        <param name="use_depth" value="false" />
         <param name="use_head_yaw" value="true" />
         <param name="head_yaw_joint_name" value="HeadYaw" />
-        <param name="reset_interval" value="5.0" />
+        <param name="reset_interval" value="10.0" />
         <param name="absolute_pose_timeout" value="300.0" />
         <param name="config_file" value="$(find cssr_system)/robotLocalization/config/landmarks.yaml" />
         <param name="topics_file" value="$(find cssr_system)/robotLocalization/data/pepperTopics.dat" />
