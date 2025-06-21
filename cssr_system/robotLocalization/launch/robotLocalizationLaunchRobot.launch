@@ -23,7 +23,7 @@
         <param name="use_depth" value="true" />
         <param name="use_head_yaw" value="true" />
         <param name="head_yaw_joint_name" value="HeadYaw" />
-        <param name="reset_interval" value="30.0" />
+        <param name="reset_interval" value="10.0" />
         <param name="absolute_pose_timeout" value="300.0" />
         <param name="config_file" value="$(find cssr_system)/robotLocalization/config/landmarks.yaml" />
         <param name="topics_file" value="$(find cssr_system)/robotLocalization/data/pepperTopics.dat" />
