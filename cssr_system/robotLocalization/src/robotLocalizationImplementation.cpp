@@ -18,6 +18,9 @@
 #include <yaml-cpp/yaml.h>
 #include <fstream>
 #include <map>
+#include <algorithm>
+#include <numeric>
+
 #include <cssr_system/ResetPose.h>
 #include <cssr_system/SetPose.h>
 #include "robotLocalization/robotLocalizationInterface.h"
@@ -518,6 +521,83 @@ private:
             ROS_WARN("Detected %zu markers, need at least 3", marker_ids.size());
             return false;
         }
+
+
+        // // Sort by position using indices
+        // if (!marker_ids.empty()) {
+        //     // Create index vector [0, 1, 2, 3, ...]
+        //     std::vector<size_t> indices(marker_ids.size());
+        //     std::iota(indices.begin(), indices.end(), 0);
+            
+        //     // Sort indices by marker center x-coordinate
+        //     std::sort(indices.begin(), indices.end(), 
+        //             [&marker_corners, &marker_ids](size_t a, size_t b) {
+        //                 float center_a_x = (marker_corners[a][0].x + marker_corners[a][1].x + 
+        //                                     marker_corners[a][2].x + marker_corners[a][3].x) / 4.0f;
+        //                 float center_b_x = (marker_corners[b][0].x + marker_corners[b][1].x + 
+        //                                     marker_corners[b][2].x + marker_corners[b][3].x) / 4.0f;
+                        
+        //                 // Primary sort: x-coordinate  
+        //                 if (std::abs(center_a_x - center_b_x) > 1.0f) {
+        //                     return center_a_x < center_b_x;
+        //                 }
+                        
+        //                 // Secondary sort: marker ID (for consistent ordering)
+        //                 return marker_ids[a] < marker_ids[b];
+        //             });
+            
+        //     // Create sorted copies using the sorted indices
+        //     std::vector<int> sorted_ids;
+        //     std::vector<std::vector<cv::Point2f>> sorted_corners;
+            
+        //     for (size_t idx : indices) {
+        //         sorted_ids.push_back(marker_ids[idx]);
+        //         sorted_corners.push_back(marker_corners[idx]);
+        //     }
+            
+        //     // Replace original vectors
+        //     marker_ids = std::move(sorted_ids);
+        //     marker_corners = std::move(sorted_corners);
+        // }
+
+        // Sort by marker ids using indices
+        if (!marker_ids.empty()) {
+            // Create index vector and sort indices instead
+            std::vector<size_t> indices(marker_ids.size());
+            std::iota(indices.begin(), indices.end(), 0);
+
+            // Sort indices by marker ID
+            std::sort(indices.begin(), indices.end(), 
+                    [&marker_ids](size_t a, size_t b) { return marker_ids[a] < marker_ids[b]; });
+
+            // Create sorted copies
+            std::vector<int> sorted_ids;
+            std::vector<std::vector<cv::Point2f>> sorted_corners;
+            for (size_t idx : indices) {
+                sorted_ids.push_back(marker_ids[idx]);
+                sorted_corners.push_back(marker_corners[idx]);
+            }
+
+            // Replace original vectors
+            marker_ids = std::move(sorted_ids);
+            marker_corners = std::move(sorted_corners);
+        }
+
+        // Print detected markers
+        if (!marker_ids.empty()) {
+            for (size_t i = 0; i < marker_ids.size(); ++i) {
+                std::stringstream ss;
+                ss << "Marker " << marker_ids[i] << " corners: ";
+                for (size_t j = 0; j < marker_corners[i].size(); ++j) {
+                    ss << "(" << marker_corners[i][j].x << "," << marker_corners[i][j].y << ")";
+                    if (j < marker_corners[i].size() - 1) ss << " ";
+                }
+                ROS_INFO("%s", ss.str().c_str());
+            }
+        } else {
+            ROS_INFO("No markers detected");
+        }
+
     
         // Get distances from depth image
         std::vector<std::tuple<int, double, double, double>> markers; // id, x, y, distance
@@ -529,7 +609,7 @@ private:
             if (projected_landmarks_.find(marker_ids[i]) != projected_landmarks_.end() && !std::isnan(distance)) {
                 markers.push_back({marker_ids[i], projected_landmarks_[marker_ids[i]].first, projected_landmarks_[marker_ids[i]].second, distance});
             }
-            // ROS_INFO("Marker ID %d: Distance = %.3f m", marker_ids[i], distance);
+            ROS_INFO("Marker ID %d: Distance = %.3f m", marker_ids[i], distance);
         }
 
         std::sort(markers.begin(), markers.end(), 
@@ -573,6 +653,9 @@ private:
         double yr1 = ym - h * (x2 - x1) / d12;
         double xr2 = xm - h * (y2 - y1) / d12;
         double yr2 = ym + h * (x2 - x1) / d12;
+
+        ROS_INFO("Solution 1: %.3f, %.3f", xr1, yr1);
+        ROS_INFO("Solution 2: %.3f, %.3f", xr2, yr2);
     
         // Check which solution satisfies the third circle
         double dist1 = std::sqrt((xr1 - x3) * (xr1 - x3) + (yr1 - y3) * (yr1 - y3));
