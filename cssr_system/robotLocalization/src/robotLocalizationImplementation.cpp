@@ -1160,156 +1160,159 @@ private:
                 {xc1b, yc1b, xc2b, yc2b, "farthest-farthest"}
             };
 
-            ROS_INFO("=== Testing all circle combinations ===");
+           ROS_INFO("=== Testing all circle combinations ===");
 
-            for (const auto& combo : combinations) {
-                double x1_int, y1_int, x2_int, y2_int;
-                int result = circle_circle_intersection(combo.xc1, combo.yc1, r1, 
-                                                    combo.xc2, combo.yc2, r2,
-                                                    &x1_int, &y1_int, &x2_int, &y2_int);
-                
-                if (result == 0) {
-                    ROS_INFO("%s: No intersection", combo.name.c_str());
-                    continue;
-                }
-                
-                // Check both intersection points
-                std::vector<std::pair<double, double>> candidates = {{x1_int, y1_int}, {x2_int, y2_int}};
-                
-                for (int i = 0; i < candidates.size(); i++) {
-                    double xr_test = candidates[i].first;
-                    double yr_test = candidates[i].second;
-                    
-                    // Check for numerical issues (points too close to landmarks)
-                    double dist_to_m1 = std::sqrt((xr_test - x1)*(xr_test - x1) + (yr_test - y1)*(yr_test - y1));
-                    double dist_to_m2 = std::sqrt((xr_test - x2)*(xr_test - x2) + (yr_test - y2)*(yr_test - y2));
-                    double dist_to_m3 = std::sqrt((xr_test - x3)*(xr_test - x3) + (yr_test - y3)*(yr_test - y3));
-                    double min_dist_to_landmarks = std::min({dist_to_m1, dist_to_m2, dist_to_m3});
-                    
-                    // Add tolerance for numerical errors (e.g., points exactly at landmarks)
-                    if (min_dist_to_landmarks < 0.01) { // NEW: Reject points extremely close to landmarks
-                        ROS_INFO("%s point %d: (%.3f, %.3f) - REJECTED: Numerical error, too close to landmarks (%.3f)", 
-                                combo.name.c_str(), i+1, xr_test, yr_test, min_dist_to_landmarks);
-                        continue;
-                    }
-                    
-                    if (min_dist_to_landmarks < 0.5) {
-                        ROS_INFO("%s point %d: (%.3f, %.3f) - REJECTED: Too close to landmarks (%.3f)", 
-                                combo.name.c_str(), i+1, xr_test, yr_test, min_dist_to_landmarks);
-                        continue;
-                    }
-                    
-                    // Relaxed odometry check (NEW: increased threshold to 5.0)
-                    double odom_dist = std::sqrt((xr_test - odom_x_)*(xr_test - odom_x_) + (yr_test - odom_y_)*(yr_test - odom_y_));
-                    if (odom_dist > 5.0) { // NEW: Relaxed from 2.0 to 5.0
-                        ROS_INFO("%s point %d: (%.3f, %.3f) - REJECTED: Too far from odometry (%.3f)", 
-                                combo.name.c_str(), i+1, xr_test, yr_test, odom_dist);
-                        continue;
-                    }
-                    
-                    // Calculate triangle areas for geometry quality
-                    double area1 = std::abs((xr_test - x1) * (y2 - y1) - (x2 - x1) * (yr_test - y1)) / 2.0;
-                    double area2 = std::abs((xr_test - x2) * (y3 - y2) - (x3 - x2) * (yr_test - y2)) / 2.0;
-                    double area3 = std::abs((xr_test - x1) * (y3 - y1) - (x3 - x1) * (yr_test - y1)) / 2.0;
-                    double avg_area = (area1 + area2 + area3) / 3.0;
-                    
-                    // Calculate angles at robot position
-                    double angle12 = std::abs(std::atan2(y1 - yr_test, x1 - xr_test) - std::atan2(y2 - yr_test, x2 - xr_test));
-                    double angle23 = std::abs(std::atan2(y2 - yr_test, x2 - xr_test) - std::atan2(y3 - yr_test, x3 - xr_test));
-                    double angle13 = std::abs(std::atan2(y1 - yr_test, x1 - xr_test) - std::atan2(y3 - yr_test, x3 - xr_test));
-                    
-                    // Normalize angles to [0, π]
-                    if (angle12 > M_PI) angle12 = 2*M_PI - angle12;
-                    if (angle23 > M_PI) angle23 = 2*M_PI - angle23;
-                    if (angle13 > M_PI) angle13 = 2*M_PI - angle13;
-                    
-                    double min_angle = std::min({angle12, angle23, angle13});
-                    double max_angle = std::max({angle12, angle23, angle13});
-                    double min_angle_deg = min_angle * 180.0 / M_PI;
-                    double max_angle_deg = max_angle * 180.0 / M_PI;
-                    
-                    // Modified angle penalty: reduced bonus for large angles, penalize very large angles
-                    double angle_penalty = 1.0;
-                    if (min_angle_deg < 15.0) {
-                        angle_penalty = 0.1; // Severe penalty for small angles
-                    } else if (min_angle_deg < 25.0) {
-                        angle_penalty = 0.3; // Moderate penalty
-                    } else if (min_angle_deg > 30.0) {
-                        angle_penalty = 1.5; // Reduced bonus for large angles
-                    }
-                    if (max_angle_deg > 120.0) {
-                        angle_penalty *= 0.5; // Penalize very large angles
-                    }
-                    
-                    // Calculate average distance to landmarks
-                    double avg_dist_to_landmarks = (dist_to_m1 + dist_to_m2 + dist_to_m3) / 3.0;
-                    
-                    // Skip unrealistic distances
-                    if (avg_dist_to_landmarks > 12.0 || avg_dist_to_landmarks < 1.0) {
-                        ROS_INFO("%s point %d: (%.3f, %.3f) - REJECTED: Unrealistic distance (%.3f)", 
-                                combo.name.c_str(), i+1, xr_test, yr_test, avg_dist_to_landmarks);
-                        continue;
-                    }
-                    
-                    // Distance score
-                    double distance_score = 1.0 / (1.0 + std::abs(avg_dist_to_landmarks - 4.0));
-                    
-                    // Landmark triangle area for config score
-                    double config_score = (landmark_triangle_area > 0.5) ? 1.0 : 0.1;
-                    
-                    // Modified score: use sqrt(angle_penalty) to reduce its dominance
-                    double score = avg_area * distance_score * std::sqrt(angle_penalty) * config_score;
-                    
-                    ROS_INFO("%s point %d: (%.3f, %.3f) - Score: %.3f (area:%.2f, dist:%.2f, ang_pen:%.2f, cfg:%.1f)", 
-                            combo.name.c_str(), i+1, xr_test, yr_test, score, avg_area, distance_score, angle_penalty, config_score);
-                    
-                    ROS_INFO("  Angles: %.1f°, %.1f°, %.1f° (min:%.1f°, max:%.1f°)", 
-                            angle12*180/M_PI, angle23*180/M_PI, angle13*180/M_PI, min_angle_deg, max_angle_deg);
-                    
-                    if (score > best_score) {
-                        best_score = score;
-                        best_xr = xr_test;
-                        best_yr = yr_test;
-                        found_valid = true;
-                        ROS_INFO("  -> NEW BEST SOLUTION!");
-                    }
-                }
-            }
+for (const auto& combo : combinations) {
+    double x1_int, y1_int, x2_int, y2_int;
+    int result = circle_circle_intersection(combo.xc1, combo.yc1, r1, 
+                                           combo.xc2, combo.yc2, r2,
+                                           &x1_int, &y1_int, &x2_int, &y2_int);
+    
+    if (result == 0) {
+        ROS_INFO("%s: No intersection", combo.name.c_str());
+        continue;
+    }
+    
+    // Check both intersection points
+    std::vector<std::pair<double, double>> candidates = {{x1_int, y1_int}, {x2_int, y2_int}};
+    
+    for (int i = 0; i < candidates.size(); i++) {
+        double xr_test = candidates[i].first;
+        double yr_test = candidates[i].second;
+        
+        // Calculate distances to landmarks
+        double dist_to_m1 = std::sqrt((xr_test - x1)*(xr_test - x1) + (yr_test - y1)*(yr_test - y1));
+        double dist_to_m2 = std::sqrt((xr_test - x2)*(xr_test - x2) + (yr_test - y2)*(yr_test - y2));
+        double dist_to_m3 = std::sqrt((xr_test - x3)*(xr_test - x3) + (yr_test - y3)*(yr_test - y3));
+        double min_dist_to_landmarks = std::min({dist_to_m1, dist_to_m2, dist_to_m3});
+        double avg_dist_to_landmarks = (dist_to_m1 + dist_to_m2 + dist_to_m3) / 3.0;
+        
+        // ONLY reject obvious numerical errors (extremely close to landmarks)
+        if (min_dist_to_landmarks < 0.01) {
+            ROS_INFO("%s point %d: (%.3f, %.3f) - REJECTED: Numerical error (%.6f)", 
+                     combo.name.c_str(), i+1, xr_test, yr_test, min_dist_to_landmarks);
+            continue;
+        }
+        
+        // REMOVE odometry check completely - let pure geometry decide
+        
+        // Calculate triangle areas formed by robot and landmark pairs
+        double area1 = std::abs((xr_test - x1) * (y2 - y1) - (x2 - x1) * (yr_test - y1)) / 2.0;
+        double area2 = std::abs((xr_test - x2) * (y3 - y2) - (x3 - x2) * (yr_test - y2)) / 2.0;
+        double area3 = std::abs((xr_test - x1) * (y3 - y1) - (x3 - x1) * (yr_test - y1)) / 2.0;
+        double avg_area = (area1 + area2 + area3) / 3.0;
+        
+        // Calculate viewing angles from robot to landmark pairs
+        double angle12 = std::abs(std::atan2(y1 - yr_test, x1 - xr_test) - std::atan2(y2 - yr_test, x2 - xr_test));
+        double angle23 = std::abs(std::atan2(y2 - yr_test, x2 - xr_test) - std::atan2(y3 - yr_test, x3 - xr_test));
+        double angle13 = std::abs(std::atan2(y1 - yr_test, x1 - xr_test) - std::atan2(y3 - yr_test, x3 - xr_test));
+        
+        // Normalize angles to [0, π]
+        if (angle12 > M_PI) angle12 = 2*M_PI - angle12;
+        if (angle23 > M_PI) angle23 = 2*M_PI - angle23;
+        if (angle13 > M_PI) angle13 = 2*M_PI - angle13;
+        
+        double min_angle = std::min({angle12, angle23, angle13});
+        double max_angle = std::max({angle12, angle23, angle13});
+        double min_angle_deg = min_angle * 180.0 / M_PI;
+        double max_angle_deg = max_angle * 180.0 / M_PI;
+        
+        // PURE GEOMETRIC SCORING - NO ODOMETRY DEPENDENCY
+        
+        // 1. Area quality score (larger triangulation areas = better precision)
+        double area_score = avg_area;
+        
+        // 2. Distance reasonableness (prefer moderate distances, avoid extremes)
+        double distance_score = 1.0;
+        if (avg_dist_to_landmarks < 1.0 || avg_dist_to_landmarks > 15.0) {
+            distance_score = 0.1; // Penalize unrealistic distances
+        } else if (avg_dist_to_landmarks < 2.0 || avg_dist_to_landmarks > 10.0) {
+            distance_score = 0.5; // Penalize marginal distances
+        } else {
+            distance_score = 1.0 / (1.0 + std::abs(avg_dist_to_landmarks - 5.0)); // Prefer ~5m
+        }
+        
+        // 3. Angle quality (avoid degenerate triangulation)
+        double angle_score = 1.0;
+        if (min_angle_deg < 10.0) {
+            angle_score = 0.05; // Severe penalty for very acute angles
+        } else if (min_angle_deg < 20.0) {
+            angle_score = 0.3;  // Moderate penalty for acute angles
+        } else if (min_angle_deg > 25.0 && max_angle_deg < 100.0) {
+            angle_score = 2.0;  // Bonus for well-distributed angles
+        }
+        
+        // 4. Landmark separation score (avoid degenerate landmark configurations)
+        double landmark_separation = std::min({
+            std::sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1)),
+            std::sqrt((x3-x2)*(x3-x2) + (y3-y2)*(y3-y2)),
+            std::sqrt((x3-x1)*(x3-x1) + (y3-y1)*(y3-y1))
+        });
+        double separation_score = (landmark_separation > 1.0) ? 1.0 : 0.1;
+        
+        // 5. Proximity penalty (slightly penalize being too close to any landmark)
+        double proximity_penalty = 1.0;
+        if (min_dist_to_landmarks < 0.5) {
+            proximity_penalty = 0.2;
+        } else if (min_dist_to_landmarks < 1.0) {
+            proximity_penalty = 0.7;
+        }
+        
+        // FINAL SCORE: Combine all geometric factors
+        double score = area_score * distance_score * angle_score * separation_score * proximity_penalty;
+        
+        ROS_INFO("%s point %d: (%.3f, %.3f) - Score: %.3f", 
+                 combo.name.c_str(), i+1, xr_test, yr_test, score);
+        ROS_INFO("  Components: area=%.2f, dist=%.2f(%.1fm), angle=%.2f(%.1f°), sep=%.2f, prox=%.2f", 
+                 area_score, distance_score, avg_dist_to_landmarks, angle_score, min_angle_deg, 
+                 separation_score, proximity_penalty);
+        
+        if (score > best_score) {
+            best_score = score;
+            best_xr = xr_test;
+            best_yr = yr_test;
+            found_valid = true;
+            ROS_INFO("  -> NEW BEST SOLUTION!");
+        }
+    }
+}
 
-            ROS_INFO("=== Final selection: (%.3f, %.3f) with score %.3f ===", best_xr, best_yr, best_score);
+ROS_INFO("=== Final selection: (%.3f, %.3f) with score %.3f ===", best_xr, best_yr, best_score);
 
-            if (!found_valid) {
-                ROS_WARN("No valid triangulation solution found!");
-                return false;
-            }
+// ALSO REMOVE the odometry logging and reality check based on distance
+// Replace the debug section with:
 
-            double xr = best_xr;
-            double yr = best_yr;
+if (!found_valid) {
+    ROS_WARN("No valid triangulation solution found!");
+    return false;
+}
 
-            // Debug information
-            ROS_INFO("=== Debug Information ===");
-            ROS_INFO("Distance between landmarks: d12=%.3f, d23=%.3f", 
-                    std::sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1)),
-                    std::sqrt((x3-x2)*(x3-x2) + (y3-y2)*(y3-y2)));
-            ROS_INFO("Robot distance from landmarks: d1=%.3f, d2=%.3f, d3=%.3f",
-                    std::sqrt((xr-x1)*(xr-x1) + (yr-y1)*(yr-y1)),
-                    std::sqrt((xr-x2)*(xr-x2) + (yr-y2)*(yr-y2)),
-                    std::sqrt((xr-x3)*(xr-x3) + (yr-y3)*(yr-y3)));
-            ROS_INFO("Expected robot position: (6.2, 5.4)");
-            ROS_INFO("Computed robot position: (%.3f, %.3f)", xr, yr);
-            ROS_INFO("Odometry position: (%.3f, %.3f)", odom_x_, odom_y_); // NEW: Log odometry for debugging
+double xr = best_xr;
+double yr = best_yr;
 
-            // Reality check - robot should be within reasonable distance of landmarks
-            double max_distance = std::max({
-                std::sqrt((xr-x1)*(xr-x1) + (yr-y1)*(yr-y1)),
-                std::sqrt((xr-x2)*(xr-x2) + (yr-y2)*(yr-y2)),
-                std::sqrt((xr-x3)*(xr-x3) + (yr-x3)*(yr-y3))
-            });
+// Debug information (NO odometry reference)
+ROS_INFO("=== Debug Information ===");
+ROS_INFO("Distance between landmarks: d12=%.3f, d23=%.3f, d13=%.3f", 
+         std::sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1)),
+         std::sqrt((x3-x2)*(x3-x2) + (y3-y2)*(y3-y2)),
+         std::sqrt((x3-x1)*(x3-x1) + (y3-y1)*(y3-y1)));
+ROS_INFO("Robot distance from landmarks: d1=%.3f, d2=%.3f, d3=%.3f",
+         std::sqrt((xr-x1)*(xr-x1) + (yr-y1)*(yr-y1)),
+         std::sqrt((xr-x2)*(xr-x2) + (yr-y2)*(yr-y2)),
+         std::sqrt((xr-x3)*(xr-x3) + (yr-y3)*(yr-y3)));
+ROS_INFO("Computed robot position: (%.3f, %.3f)", xr, yr);
 
-            if (max_distance > 10.0) {
-                ROS_WARN("Computed robot position seems unrealistic (max distance to landmark: %.3f)", max_distance);
-                return false;
-            }
+// Simple sanity check - only reject truly absurd results
+double max_distance = std::max({
+    std::sqrt((xr-x1)*(xr-x1) + (yr-y1)*(yr-y1)),
+    std::sqrt((xr-x2)*(xr-x2) + (yr-y2)*(yr-y2)),
+    std::sqrt((xr-x3)*(xr-x3) + (yr-y3)*(yr-y3))
+});
+
+if (max_distance > 20.0) { // Only reject if robot is impossibly far
+    ROS_WARN("Computed robot position seems unrealistic (max distance to landmark: %.3f)", max_distance);
+    return false;
+}
 
             // Compute yaw (using marker 1)
             double theta = computeYaw(marker_centers[0], x1, y1, xr, yr);

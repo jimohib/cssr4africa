@@ -40,9 +40,9 @@ verboseMode                     false
 * rosrun cssr_system robotLocalization
 ...
 *
-* Author: Birhanu Shimelis Girma, Carnegie Mellon University Africa
-* Email: bgirmash@andrew.cmu.edu
-* Date: September 7, 2024
+* Author: Ibrahim Olaide Jimoh, Carnegie Mellon University Africa
+* Email: ioj@andrew.cmu.edu
+* Date: June 25, 2025
 * Version: v1.0
 *
 */
