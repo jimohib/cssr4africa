@@ -20,7 +20,7 @@
     <node pkg="cssr_system" type="robotLocalization" name="robotLocalization" output="screen">
         <!-- Parameters for robot_localization_node -->
         <param name="verbose" value="false" />
-        <param name="use_depth" value="true" />
+        <param name="use_depth" value="false" />
         <param name="use_head_yaw" value="true" />
         <param name="head_yaw_joint_name" value="HeadYaw" />
         <param name="reset_interval" value="10.0" />
