@@ -12,7 +12,7 @@
 *
 * Website: www.cssr4africa.org
 *
-* This program comes with ABSOLUTELY NO WARRANTY.
+* This program comes with ABSOLUTELY NO WARRANTY
 */
 
 #ifndef ROBOT_NAVIGATION_TEST_INTERFACE_H
