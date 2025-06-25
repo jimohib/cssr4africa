@@ -451,8 +451,6 @@ bool RobotLocalizationNode::computeAbsolutePose() {
                     continue;
                 }
                 
-                // REMOVE odometry check completely - let pure geometry decide
-                
                 // Calculate triangle areas formed by robot and landmark pairs
                 double area1 = std::abs((xr_test - x1) * (y2 - y1) - (x2 - x1) * (yr_test - y1)) / 2.0;
                 double area2 = std::abs((xr_test - x2) * (y3 - y2) - (x3 - x2) * (yr_test - y2)) / 2.0;
@@ -473,8 +471,6 @@ bool RobotLocalizationNode::computeAbsolutePose() {
                 double max_angle = std::max({angle12, angle23, angle13});
                 double min_angle_deg = min_angle * 180.0 / M_PI;
                 double max_angle_deg = max_angle * 180.0 / M_PI;
-                
-                // PURE GEOMETRIC SCORING - NO ODOMETRY DEPENDENCY
                 
                 // 1. Area quality score (larger triangulation areas = better precision)
                 double area_score = avg_area;
@@ -515,7 +511,7 @@ bool RobotLocalizationNode::computeAbsolutePose() {
                     proximity_penalty = 0.7;
                 }
                 
-                // FINAL SCORE: Combine all geometric factors
+                // Combine all geometric factors
                 double score = area_score * distance_score * angle_score * separation_score * proximity_penalty;
                 
                 ROS_INFO("%s point %d: (%.3f, %.3f) - Score: %.3f", 
@@ -536,9 +532,6 @@ bool RobotLocalizationNode::computeAbsolutePose() {
 
         ROS_INFO("=== Final selection: (%.3f, %.3f) with score %.3f ===", best_xr, best_yr, best_score);
 
-        // ALSO REMOVE the odometry logging and reality check based on distance
-        // Replace the debug section with:
-
         if (!found_valid) {
             ROS_WARN("No valid triangulation solution found!");
             return false;
@@ -547,7 +540,7 @@ bool RobotLocalizationNode::computeAbsolutePose() {
         double xr = best_xr;
         double yr = best_yr;
 
-        // Debug information (NO odometry reference)
+        // Debug information
         ROS_INFO("=== Debug Information ===");
         ROS_INFO("Distance between landmarks: d12=%.3f, d23=%.3f, d13=%.3f", 
                 std::sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1)),
@@ -571,7 +564,7 @@ bool RobotLocalizationNode::computeAbsolutePose() {
             return false;
         }
 
-        // Compute yaw (using marker 1)
+        // Compute yaw using first marker
         double theta = computeYaw(marker_centers[0], x1, y1, xr, yr);
         ROS_INFO("Theta: %.3f", theta);
 
@@ -735,19 +728,19 @@ bool RobotLocalizationNode::computeAbsolutePoseWithDepth() {
         return false;
     }
 
-    // Trilateration: Solve for (xr, yr) using three markers
+    // Solve for (xr, yr) using three markers
     double x1 = std::get<1>(markers[0]), y1 = std::get<2>(markers[0]), d1 = std::get<3>(markers[0]);
     double x2 = std::get<1>(markers[1]), y2 = std::get<2>(markers[1]), d2 = std::get<3>(markers[1]);
     double x3 = std::get<1>(markers[2]), y3 = std::get<2>(markers[2]), d3 = std::get<3>(markers[2]);
 
-        // Check for collinear markers
+    // Check for collinear markers
     double cross_product = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
     if (std::abs(cross_product) < 0.01) {
         ROS_WARN("Markers are nearly collinear, triangulation may be inaccurate");
         return false;
     }
 
-    // Simplified trilateration (intersection of two circles)
+    // Intersection of two circles)
     double x12 = x2 - x1, y12 = y2 - y1;
     double d12 = std::sqrt(x12 * x12 + y12 * y12);
     double a = (d1 * d1 - d2 * d2 + d12 * d12) / (2.0 * d12);
@@ -851,8 +844,7 @@ double RobotLocalizationNode::computeYaw(const std::pair<double, double>& marker
     while (raw_yaw > M_PI) raw_yaw -= 2 * M_PI;
     while (raw_yaw < -M_PI) raw_yaw += 2 * M_PI;
     
-    // Based on your data: raw_yaw ≈ -166°, we want +180°
-    // Simple offset: -166° + 346° = 180°
+    // Calibrate yaw
     double calibrated_yaw = raw_yaw + (346.0 * M_PI / 180.0);
     
     // Final normalization

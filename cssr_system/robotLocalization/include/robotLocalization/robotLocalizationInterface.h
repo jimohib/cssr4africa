@@ -1,3 +1,20 @@
+/* robotLocalizationInterface.h
+*
+* Author: Ibrahim Olaide Jimoh, Carnegie Mellon University Africa
+* Email: ioj@andrew.cmu.edu
+* Date: June 25, 2025
+* Version: v1.0
+*
+* Copyright (C) 2025 CSSR4Africa Consortium
+*
+* This project is funded by the African Engineering and Technology Network (Afretec)
+* Inclusive Digital Transformation Research Grant Programme.
+*
+* Website: www.cssr4africa.org
+*
+* This program comes with ABSOLUTELY NO WARRANTY.
+*/
+
 #ifndef ROBOT_LOCALIZATION_INTERFACE_H
 #define ROBOT_LOCALIZATION_INTERFACE_H
 
