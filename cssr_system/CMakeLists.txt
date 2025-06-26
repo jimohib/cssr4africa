@@ -89,7 +89,7 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  INCLUDE_DIRS robotLocalization robotNavigation arucoLocalization pepperLocalization
+  INCLUDE_DIRS robotLocalization robotLocalizationTest robotNavigation arucoLocalization pepperLocalization
   CATKIN_DEPENDS roscpp roslib std_msgs nav_msgs geometry_msgs sensor_msgs image_transport cv_bridge tf2 tf2_ros angles message_runtime
   DEPENDS OpenCV yaml-cpp
 )
@@ -108,6 +108,7 @@ include_directories(
   ${OpenCV_INCLUDE_DIRS}
   ${YAML_CPP_INCLUDE_DIR}
   robotLocalization/include
+  robotLocalizationTest/include
   robotNavigation/include
   arucoLocalization/include
   pepperLocalization/include
@@ -115,6 +116,7 @@ include_directories(
 
 ## Add Subdirectories for robotLocalization and robotNavigation
 add_subdirectory(robotLocalization)
+add_subdirectory(robotLocalizationTest)
 add_subdirectory(robotNavigation)
 add_subdirectory(arucoLocalization)
 add_subdirectory(pepperLocalization)
