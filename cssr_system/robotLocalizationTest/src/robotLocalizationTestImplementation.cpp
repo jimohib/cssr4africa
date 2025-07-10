@@ -15,7 +15,7 @@
 * This program comes with ABSOLUTELY NO WARRANTY.
 */
 
-#include "robotLocalizationTest/robotLocalizationInterface.h"
+#include "robotLocalizationTest/robotLocalizationTestInterface.h"
 
 void RobotLocalizationNode::printCopyrightMessage() {
     ROS_INFO("=======================================================");
@@ -80,18 +80,31 @@ void RobotLocalizationNode::loadTopicNames() {
             ROS_ERROR("Failed to open topics file %s", topics_file_.c_str());
             return;
         }
+        
         std::string line;
         while (std::getline(file, line)) {
-            size_t pos = line.find("=");
+            if (line.empty() || line[0] == '#' || line[0] == ';') {
+                continue;
+            }
+            
+            size_t pos = line.find_first_of(" \t");
             if (pos != std::string::npos) {
                 std::string key = line.substr(0, pos);
-                std::string value = line.substr(pos + 1);
+                std::string value = line.substr(pos);
+                
                 key.erase(key.find_last_not_of(" \t") + 1);
+                
                 value.erase(0, value.find_first_not_of(" \t"));
-                topic_map_[key] = value;
+                
+                value.erase(value.find_last_not_of(" \t") + 1);
+                
+                if (!key.empty() && !value.empty()) {
+                    topic_map_[key] = value;
+                }
             }
         }
-        ROS_INFO("Loaded topics from %s", topics_file_.c_str());
+        
+        ROS_INFO("Loaded %zu topics from %s", topic_map_.size(), topics_file_.c_str());
     } catch (const std::exception& e) {
         ROS_ERROR("Error reading topics file %s: %s", topics_file_.c_str(), e.what());
     }
@@ -99,21 +112,40 @@ void RobotLocalizationNode::loadTopicNames() {
 
 void RobotLocalizationNode::loadLandmarks() {
     try {
-        YAML::Node config = YAML::LoadFile(config_file_);
-        if (!config["landmarks"]) {
-            ROS_ERROR("No 'landmarks' key found in %s", config_file_.c_str());
+        // Read JSON file
+        std::ifstream config_stream(landmark_file_);
+        if (!config_stream.is_open()) {
+            ROS_ERROR("Failed to open landmarks file %s", landmark_file_.c_str());
             return;
         }
-        for (const auto& marker : config["landmarks"]) {
-            if (!marker["id"] || !marker["x"] || !marker["y"] || !marker["z"]) {
-                ROS_WARN("Skipping invalid landmark entry in %s", config_file_.c_str());
+        
+        Json::Value root;
+        Json::Reader reader;
+        if (!reader.parse(config_stream, root)) {
+            ROS_ERROR("Failed to parse landmarks file %s: %s", 
+                     landmark_file_.c_str(), reader.getFormattedErrorMessages().c_str());
+            return;
+        }
+        
+        if (!root.isMember("landmarks") || !root["landmarks"].isArray()) {
+            ROS_ERROR("No 'landmarks' array found in %s", landmark_file_.c_str());
+            return;
+        }
+        
+        const Json::Value& landmarks = root["landmarks"];
+        for (const Json::Value& marker : landmarks) {
+            // Check for required fields
+            if (!marker.isMember("id") || !marker.isMember("x") || 
+                !marker.isMember("y") || !marker.isMember("z")) {
+                ROS_WARN("Skipping invalid landmark entry in %s", landmark_file_.c_str());
                 continue;
             }
+            
             Landmark3D lm;
-            lm.id = marker["id"].as<int>();
-            lm.x = marker["x"].as<double>();
-            lm.y = marker["y"].as<double>();
-            lm.z = marker["z"] ? marker["z"].as<double>() : camera_height_;
+            lm.id = marker["id"].asInt();
+            lm.x = marker["x"].asDouble();
+            lm.y = marker["y"].asDouble();
+            lm.z = marker["z"].asDouble();
 
             landmarks3D_[lm.id] = lm;
 
@@ -135,27 +167,57 @@ void RobotLocalizationNode::loadLandmarks() {
                          lm.id, lm.x, lm.y, lm.z, x_proj, y_proj);
             }
         }
-    } catch (const YAML::BadFile& e) {
-        ROS_ERROR("Failed to open landmarks file %s: %s", config_file_.c_str(), e.what());
-    } catch (const YAML::Exception& e) {
-        ROS_ERROR("Failed to parse landmarks file %s: %s", config_file_.c_str(), e.what());
+    } catch (const std::exception& e) {
+        ROS_ERROR("Error loading landmarks from %s: %s", landmark_file_.c_str(), e.what());
     }
 }
 
 void RobotLocalizationNode::loadCameraInfoFromFile() {
     try {
-        YAML::Node config = YAML::LoadFile(camera_info_file_);
-        fx_ = config["camera_info"]["fx"].as<double>();
-        fy_ = config["camera_info"]["fy"].as<double>();
-        cx_ = config["camera_info"]["cx"].as<double>();
-        cy_ = config["camera_info"]["cy"].as<double>();
+        // Read JSON file
+        std::ifstream config_stream(camera_info_file_);
+        if (!config_stream.is_open()) {
+            ROS_ERROR("Failed to open camera info file %s", camera_info_file_.c_str());
+            return;
+        }
+        
+        Json::Value root;
+        Json::Reader reader;
+        if (!reader.parse(config_stream, root)) {
+            ROS_ERROR("Failed to parse camera info file %s: %s", 
+                     camera_info_file_.c_str(), reader.getFormattedErrorMessages().c_str());
+            return;
+        }
+        
+        if (!root.isMember("camera_info")) {
+            ROS_ERROR("No 'camera_info' object found in %s", camera_info_file_.c_str());
+            return;
+        }
+        
+        const Json::Value& camera_info = root["camera_info"];
+        
+        // Check for required fields
+        if (!camera_info.isMember("fx") || !camera_info.isMember("fy") || 
+            !camera_info.isMember("cx") || !camera_info.isMember("cy")) {
+            ROS_ERROR("Missing required camera intrinsic parameters in %s", camera_info_file_.c_str());
+            return;
+        }
+        
+        fx_ = camera_info["fx"].asDouble();
+        fy_ = camera_info["fy"].asDouble();
+        cx_ = camera_info["cx"].asDouble();
+        cy_ = camera_info["cy"].asDouble();
+        
         if (fx_ <= 0 || fy_ <= 0 || cx_ <= 0 || cy_ <= 0) {
             ROS_ERROR("Invalid camera intrinsics in %s", camera_info_file_.c_str());
             return;
         }
+        
         camera_info_received_ = true;
-        ROS_INFO("Loaded camera intrinsics from file: fx=%.2f, fy=%.2f, cx=%.2f, cy=%.2f", fx_, fy_, cx_, cy_);
-    } catch (const YAML::Exception& e) {
+        ROS_INFO("Loaded camera intrinsics from file: fx=%.2f, fy=%.2f, cx=%.2f, cy=%.2f", 
+                 fx_, fy_, cx_, cy_);
+                 
+    } catch (const std::exception& e) {
         ROS_ERROR("Failed to load camera info from %s: %s", camera_info_file_.c_str(), e.what());
     }
 }

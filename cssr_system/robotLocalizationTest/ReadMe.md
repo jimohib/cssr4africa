@@ -4,7 +4,7 @@ This document describes the unit testing procedures for the `robotLocalization` 
 
 ## Overview
 
-The `robotLocalization` component provides visual landmark-based pose estimation for autonomous robots. These unit tests validate the communication, computation, and configuration functionality of the component across three different testing environments.
+The `robotLocalization` component provides visual landmark-based pose estimation for pepper humanoid robot. These unit tests validate the communication, computation, and configuration functionality of the component across three different testing environments.
 
 ## Test Launch Files
 
@@ -12,8 +12,8 @@ The `robotLocalization` component provides visual landmark-based pose estimation
 **Purpose**: Tests component with physical Pepper robot and real sensors.
 
 **Data Sources**:
-- Physical RealSense RGB-D camera (`/camera/color/image_raw`, `/camera/depth/image_raw`)
-- Robot odometry (`/pepper_dcm/odom`)
+- Physical RealSense RGB-D camera (`/camera/color/image_raw`, `/camera/aligned_depth_to_color/image_raw`)
+- Robot odometry (`/naoqi_driver/odom`)
 - Joint states from robot (`/joint_states`)
 - Camera calibration (`/camera/color/camera_info`)
 
@@ -23,7 +23,7 @@ The `robotLocalization` component provides visual landmark-based pose estimation
 
 **Expected Results**:
 - Continuous pose publication at ~1-10 Hz
-- Pose accuracy within ±0.1m position, ±5° orientation
+- Pose accuracy within ±0.2m position, ±5° orientation
 - Successful marker detection when 3+ ArUco markers visible
 - Automatic pose correction every 5 seconds (configurable)
 
@@ -134,9 +134,7 @@ rostopic echo /robotLocalization/pose
 - Distance measurements to landmarks (from depth camera)
 
 **Expected Output**:
-- Improved accuracy: ±0.05m position, ±3° orientation
-- Faster convergence (requires only 3 markers vs complex triangulation)
-- Better performance in challenging lighting conditions
+- Accuracy: ±0.5m position, ±3° orientation
 
 **Validation Method**:
 ```bash
@@ -193,10 +191,7 @@ use_depth = true/false
 - `false`: Uses triangulation algorithm with angle measurements only
 
 **Validation**:
-Compare pose accuracy and computation time between modes. Depth mode should show:
-- Higher accuracy (±0.05m vs ±0.1m)
-- Better performance in poor lighting
-- Requires aligned depth images
+Compare pose accuracy and computation time between modes. Angle mode should show better accuracy.
 
 **3. Reset Interval Parameter**
 ```ini
@@ -259,7 +254,6 @@ landmarks:
 **Validation**:
 Test with different landmark configurations:
 - Minimum 3 landmarks (triangle)
-- 4+ landmarks (redundancy)
 - Collinear landmarks (should be rejected)
 
 ## Test Execution Commands
@@ -267,7 +261,7 @@ Test with different landmark configurations:
 ### Physical Robot Testing
 ```bash
 # Terminal 1: Launch robot connection
-roslaunch unit_tests robotLocalizationLaunchRobot.launch robot_ip:=172.111.29.240
+roslaunch cssr_system robotLocalizationLaunchRobot.launch robot_ip:=172.111.29.240
 
 # Terminal 2: Monitor results
 rostopic echo /robotLocalization/pose
@@ -281,7 +275,7 @@ rosservice call /robotLocalization/reset_pose
 ### Simulation Testing
 ```bash
 # Terminal 1: Launch simulation
-roslaunch unit_tests robotLocalizationLaunchSimulator.launch gui:=true
+roslaunch cssr_system robotLocalizationLaunchSimulator.launch gui:=true
 
 # Terminal 2: Monitor and control
 rostopic echo /robotLocalization/pose
@@ -291,7 +285,7 @@ rostopic echo /robotLocalization/pose
 ### Test Harness Testing
 ```bash
 # Terminal 1: Launch test harness
-roslaunch unit_tests robotLocalizationLaunchTestHarness.launch test_scenario:=basic_localization
+roslaunch cssr_system robotLocalizationLaunchTestHarness.launch test_scenario:=basic_localization
 
 # Results will be logged to:
 # - test_results/pose_log_basic_localization.csv
@@ -303,8 +297,8 @@ roslaunch unit_tests robotLocalizationLaunchTestHarness.launch test_scenario:=ba
 
 ### Performance Metrics
 - **Pose Publication Rate**: 1-10 Hz
-- **Position Accuracy**: ±0.1m (RGB), ±0.05m (RGB-D)
-- **Orientation Accuracy**: ±5° (RGB), ±3° (RGB-D)
+- **Position Accuracy**: ±0.2m (RGB), ±0.5m (RGB-D)
+- **Orientation Accuracy**: ±5° (RGB), ±5° (RGB-D)
 - **Landmark Detection Rate**: >90% when 3+ markers visible
 - **System Latency**: <500ms from image to pose
 

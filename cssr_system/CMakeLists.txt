@@ -33,6 +33,12 @@ find_package(OpenCV REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 
+find_package(jsoncpp REQUIRED)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSONCPP jsoncpp)
+
+
 ################################################
 ## Declare ROS messages, services and actions ##
 ################################################
@@ -107,6 +113,8 @@ include_directories(
   ${aruco_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   ${YAML_CPP_INCLUDE_DIR}
+  ${JSONCPP_INCLUDE_DIRS}
+
   robotLocalization/include
   robotLocalizationTest/include
   robotNavigation/include
@@ -130,5 +138,3 @@ add_subdirectory(pepperLocalization)
 # install(DIRECTORY robotNavigation/data/
 #   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/robotNavigation/data
 # )
-
-

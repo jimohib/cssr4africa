@@ -3,21 +3,37 @@
 <!-- This file connects the component to data sources and sinks on the physical robot -->
 
 <launch>
-    <!-- Robot connection parameters -->
-    <arg name="robot_ip" default="172.111.29.240" />
-    <arg name="roscore_ip" default="172.111.29.240" />
-    <arg name="network_interface" default="wlan0" />
-    
-    <!-- Set ROS network configuration -->
-    <env name="ROS_IP" value="$(arg roscore_ip)" />
-    <env name="ROS_MASTER_URI" value="http://$(arg robot_ip):11311" />
-    
-    <!-- Launch Pepper robot drivers and sensors -->
-    <include file="$(find pepper_bringup)/launch/pepper_full.launch">
-        <arg name="robot_ip" value="$(arg robot_ip)" />
-        <arg name="roscore_ip" value="$(arg roscore_ip)" />
-        <arg name="network_interface" value="$(arg network_interface)" />
-    </include>
+    <arg name="robot_ip"          default="172.29.111.240" /> <!-- 127.0.0.1 -->
+    <arg name="robot_port"        default="9559" />
+    <arg name="roscore_ip"        default="172.29.111.236" />
+    <arg name="network_interface" default="wlp0s20f3" />
+    <arg name="namespace"         default="naoqi_driver" />
+
+        <!-- Call Robot publisher -->
+    <include file="$(find pepper_description)/launch/pepper_upload.launch" />
+
+    <!-- Call Robot Trajectory Controller -->
+    <include file="$(find pepper_control)/launch/pepper_control_trajectory.launch"/>
+
+    <!-- Call Robot Driver -->
+    <node pkg="naoqi_dcm_driver" type="naoqi_dcm_driver" name="naoqi_dcm_driver" respawn="false" output="screen" >
+        <!-- Load configurations from YAML file to parameter server -->
+        <rosparam file="$(find pepper_dcm_bringup)/config/pepper_dcm.yaml" command="load"/>
+        <rosparam file="$(find pepper_control)/config/pepper_trajectory_control.yaml" command="load"/>
+        <param name="RobotIP"             value="$(arg robot_ip)" />
+        <param name="RobotPort"           value="$(arg robot_port)" />
+        <param name="DriverBrokerIP"      value="$(arg roscore_ip)" />
+        <param name="network_interface"   value="$(arg network_interface)" />
+        <param name="Prefix"              value="pepper_dcm" />
+        <param name="motor_groups"        value="Body" /> <!-- either "Body" or separate groups in the order "Head LArm RArm" -->
+        <param name="use_dcm"             value="false" />
+        <param name="max_stiffness"       value="0.9" />
+    </node>
+
+    <!-- Launch naoqi_driver_node -->
+    <node pkg="naoqi_driver" type="naoqi_driver_node" name="$(arg namespace)" required="true"
+        args="--qi-url=tcp://$(arg robot_ip):$(arg robot_port) --roscore_ip=$(arg roscore_ip) --network_interface=$(arg network_interface) --namespace=$(arg namespace)"
+        output="screen" />
     
     <!-- Launch RealSense camera on robot -->
     <include file="$(find realsense2_camera)/launch/rs_camera.launch">
@@ -43,7 +59,7 @@
           args="0 0 0 0 0 0 odom base_link 100" />
 
     <!-- Launch robotLocalization component under test -->
-    <node pkg="cssr_system" type="robotLocalization" name="robotLocalization" 
+    <node pkg="cssr_system" type="robotLocalizationTest" name="robotLocalizationTest" 
           output="screen" respawn="false">
         <!-- Test configuration parameters -->
         <param name="verbose" value="true" />
@@ -52,9 +68,9 @@
         <param name="head_yaw_joint_name" value="HeadYaw" />
         <param name="reset_interval" value="5.0" />
         <param name="absolute_pose_timeout" value="120.0" />
-        <param name="config_file" value="$(find cssr_system)/robotLocalization/config/test_landmarks.yaml" />
-        <param name="topics_file" value="$(find cssr_system)/robotLocalization/data/pepperTopics.dat" />
-        <param name="camera_info_file" value="$(find cssr_system)/robotLocalization/config/test_camera_info.yaml" />
+        <param name="config_file" value="$(find cssr_system)/robotLocalizationTest/config/test_landmarks.yaml" />
+        <param name="topics_file" value="$(find cssr_system)/robotLocalizationTest/data/pepperTopics.dat" />
+        <param name="camera_info_file" value="$(find cssr_system)/robotLocalizationTest/config/test_camera_info.yaml" />
         <param name="camera_info_timeout" value="10.0" />
         <param name="map_frame" value="map" />
         <param name="odom_frame" value="odom" />

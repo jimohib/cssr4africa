@@ -36,6 +36,7 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/buffer.h>
 #include <yaml-cpp/yaml.h>
+#include <json/json.h>
 #include <fstream>
 #include <map>
 #include <algorithm>
@@ -81,7 +82,7 @@ private:
     // Configuration parameters
     bool verbose_, use_depth_, use_head_yaw_, camera_info_received_;
     double reset_interval_, camera_info_timeout_, absolute_pose_timeout_;
-    std::string config_file_, topics_file_, camera_info_file_;
+    std::string landmark_file_, topics_file_, camera_info_file_;
     std::string head_yaw_joint_name_, map_frame_, odom_frame_;
     
     // Pose tracking variables

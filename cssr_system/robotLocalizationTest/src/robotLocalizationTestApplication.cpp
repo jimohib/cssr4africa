@@ -28,7 +28,7 @@
  * head_yaw_joint_name   |     HeadYaw
  * reset_interval        |     30.0
  * absolute_pose_timeout |     300.0
- * config_file           |     config/landmarks.yaml
+ * landmark_file           |     config/landmarks.yaml
  * topics_file           |     data/pepperTopics.dat
  * camera_info_file      |     config/camera_info.yaml
  * camera_info_timeout   |     10.0
@@ -111,7 +111,7 @@
 *
 */
 
-#include "robotLocalizationTest/robotLocalizationInterface.h"
+#include "robotLocalizationTest/robotLocalizationTestInterface.h"
 
 // Constructor implementation
 RobotLocalizationNode::RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(), tf_listener_(tf_buffer_) {
@@ -133,9 +133,9 @@ RobotLocalizationNode::RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(
     nh_.param("head_yaw_joint_name", head_yaw_joint_name_, std::string("HeadYaw"));
     nh_.param("reset_interval", reset_interval_, 30.0);
     nh_.param("absolute_pose_timeout", absolute_pose_timeout_, 300.0);
-    nh_.param("config_file", config_file_, std::string("config/test_landmarks.yaml"));
+    nh_.param("landmark_file", landmark_file_, std::string("data/test_landmarks.json"));
     nh_.param("topics_file", topics_file_, std::string("data/pepperTopics.dat"));
-    nh_.param("camera_info_file", camera_info_file_, std::string("config/test_camera_info.yaml"));
+    nh_.param("camera_info_file", camera_info_file_, std::string("config/test_camera_info.json"));
     nh_.param("camera_info_timeout", camera_info_timeout_, 10.0);
     nh_.param("map_frame", map_frame_, std::string("map"));
     nh_.param("odom_frame", odom_frame_, std::string("odom"));
