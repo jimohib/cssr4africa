@@ -224,7 +224,9 @@ void RobotLocalizationNode::odomCallback(const nav_msgs::Odometry::ConstPtr& msg
     geometry_msgs::Pose2D pose_msg;
     pose_msg.x = relative_pose.x;
     pose_msg.y = relative_pose.y;
-    pose_msg.theta = angles::to_degrees(relative_pose.theta);
+    // pose_msg.theta = angles::to_degrees(relative_pose.theta);
+    pose_msg.theta = fmod(angles::to_degrees(relative_pose.theta) + 360.0, 360.0);
+
 
     pose_pub_.publish(pose_msg);
 

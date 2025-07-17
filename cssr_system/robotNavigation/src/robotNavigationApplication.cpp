@@ -41,7 +41,7 @@
  *
  * Services Advertised and Message Types
  *
- * /robotNavigation/setGoal                                      cssr_system/setGoal
+ * /robotNavigation/set_goal                                      cssr_system/setGoal
  *
  * Input Data Files
  *
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
 
     ROS_INFO("%s: startup.", nodeName.c_str()); 
 
-    ros::ServiceServer set_goal_service = nh.advertiseService("/robotNavigation/setGoal", setGoal);
+    ros::ServiceServer set_goal_service = nh.advertiseService("/robotNavigation/set_goal", setGoal);
     ROS_INFO("%s: Goal Server Ready to receive requests.", nodeName.c_str());
 
     // Read the configuration file

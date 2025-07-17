@@ -78,6 +78,7 @@
 #include <climits>
 #include <string>
 #include <opencv2/opencv.hpp>
+#include <stack>
 
 using namespace std;
 using namespace cv;
@@ -102,13 +103,16 @@ using namespace boost::algorithm;
 #define TRUE     1
 #define FALSE    0
 
-#define BFS_ALGORITHM                0         // Breadth First Search Algorithm
-#define DIJKSTRA_ALGORITHM           1        // Dijkstra's Algorithm
+#define BFS_ALGORITHM               0         // Breadth First Search Algorithm
+#define DIJKSTRA_ALGORITHM          1        // Dijkstra's Algorithm
 #define ASTAR_ALGORITHM             2       // A* Algorithm
+#define DFS_ALGORITHM               3
 
 #define BFS      0
 #define DIJKSTRA 1
 #define ASTAR    2
+#define DFS      3
+
 
 extern std::string nodeName;   
 // Directory where the package is located
@@ -273,9 +277,23 @@ void printWaypoints(std::vector<waypointType>& valid_waypoints, double room_widt
 std::vector<int> astar(int start, int goal, const std::vector<std::vector<int>>& graph, int cols, int heuristic_type);
 std::vector<int> bfs(int start, int goal, const std::vector<std::vector<int>>& graph);
 std::vector<int> dijkstra(int start, int goal, const std::vector<std::vector<int>>& graph);
+std::vector<int> dfs(int start, int goal, const std::vector<std::vector<int>>& graph);
+
+
+/***************************************************************************************************************************/
+
+// Helper functions for improved waypoint generation
+double calculateOptimalApproachAngle(const std::vector<pointType>& path, int current_idx, int lookahead);
+std::vector<waypointType> optimizeWaypointSequence(const std::vector<waypointType>& candidates, double min_turning_radius);
+
+// New smooth navigation function
+int executeSmoothWaypointNavigation(double start_x, double start_y, double start_theta, 
+                                   double goal_x, double goal_y, double goal_theta,
+                                   ros::Publisher velocity_publisher, ros::Rate rate, bool debug);
 
 
 
+                                   
 /***************************************************************************************************************************
 
    Function declarations for mapping between the world and map coordinates

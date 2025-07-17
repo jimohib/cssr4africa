@@ -8,7 +8,7 @@
 
 The `robotNavigation` ROS node enables autonomous navigation capabilities for the Pepper humanoid robot. This node provides path planning and navigation functionalities, allowing the robot to navigate from its current position to a specified goal location while avoiding obstacles in the environment.
 
-The package implements various path planning algorithms including A*, Dijkstra, and BFS, and can be configured to respect social distancing norms during navigation. The system leverages environmental maps and configuration maps to plan optimal paths and executes smooth motion commands for the robot.
+The package implements various path planning algorithms including A*, Dijkstra,BFS, and DFS and can be configured to respect social distancing norms during navigation. The system leverages environmental maps and configuration maps to plan optimal paths and executes smooth motion commands for the robot.
 
 To accommodate diverse navigation scenarios, parameters such as path planning algorithm, social distance mode, and verbose output are configurable. This package is designed for use with physical Pepper robots, allowing seamless integration into larger robotics applications through ROS topic and service interfaces.
 
@@ -51,7 +51,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
    |-----------|-------------|---------|---------|
    | `environmentMap` | Environmental map file | `scenarioOneEnvironmentMap.dat` | `scenarioOneEnvironmentMap.dat` |
    | `configurationMap` | Configuration map file | `scenarioOneConfigMap.dat` | `scenarioOneConfigMap.dat` |
-   | `pathPlanning` | Path planning algorithm | `astar`, `dijkstra`, `bfs` | `astar` |
+   | `pathPlanning` | Path planning algorithm | `astar`, `dijkstra`, `bfs`, `dfs` | `astar` |
    | `socialDistance` | Social distance mode | `true`, `false` | `true` |
    | `robotTopics` | Physical robot topic mapping file | `pepperTopics.dat` | `pepperTopics.dat` |
    | `verboseMode` | Diagnostic info printing | `true`, `false` | `false` |
@@ -78,7 +78,10 @@ Accompanying this code is the deliverable report that provides a detailed explan
          ```bash
          roslaunch unit_tests robotNavigationLaunchTestRobot.launch 
         ```
-        
+         If the complete softwares are integrated and we have a system wide launch filem, you can us the following command to connect to the robot.
+         ```bash
+         roslaunch cssr_system cssrSystemLaunchRobot.launch robot_ip:=<robot_ip> roscore_ip:=<roscore_ip> network_interface:=<network_interface> launch_sensors:=true launch_actuators:=true 
+         ```
          
     - Open a new terminal to launch the `robotNavigation` node:
         ```bash
@@ -98,10 +101,10 @@ Accompanying this code is the deliverable report that provides a detailed explan
          </div>
 
 5. **Using the `robotNavigation` Services:**
-  Upon launching the node, the hosted service (`/robotNavigation/setGoal`) is available and ready to be invoked. This can be verified by running the following command in a new terminal:
+  Upon launching the node, the hosted service (`/robotNavigation/set_goal`) is available and ready to be invoked. This can be verified by running the following command in a new terminal:
 
      ```bash
-      rosservice list | grep /robotNavigation/setGoal
+      rosservice list | grep /robotNavigation/set_goal
       ```
    **Echo the Pose Topic**
    View the pose data assuming robot localization is running and publishing the current pose:
@@ -123,14 +126,14 @@ Accompanying this code is the deliverable report that provides a detailed explan
     
     - Sample Invocations (Navigate to position (2.0, 6.6) with 0-degree orientation:
     ```bash
-    rosservice call /robotNavigation/setGoal 2.0 6.6 0.0
+    rosservice call /robotNavigation/set_goal 2.0 6.6 0.0
     ```
    - If **negative** value of theta needs to be passed as a goal, you have to use the following format. It is because of how the rosservice call command parses command-line arguments. This is standard behavior in Unix/Linux command-line tools, where <code> - </code> at the beginning of an argument is normally interpreted as a flag. 
    ```bash
-   rosservice call /robotNavigation/setGoal -- 2.0 7.8 -45.0
+   rosservice call /robotNavigation/set_goal -- 2.0 7.8 -45.0
    ```
    ```bash
-   rosservice call /robotNavigation/setGoal "{goal_x: 2.0, goal_y: 7.8, goal_theta: -45.0}"
+   rosservice call /robotNavigation/set_goal "{goal_x: 2.0, goal_y: 7.8, goal_theta: -45.0}"
    ```
     **Setting Robot Pose**
     If you need to set the robot's pose (usually for initialization or testing), use the following service::

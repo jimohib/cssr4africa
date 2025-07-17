@@ -1,6 +1,6 @@
 <launch>
     <!-- Launch RealSense camera node -->
-    <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+    <!-- <include file="$(find realsense2_camera)/launch/rs_camera.launch">
         <arg name="enable_color" value="true" />
         <arg name="enable_depth" value="true" />
         <arg name="color_width" value="1280" />
@@ -10,7 +10,7 @@
         <arg name="depth_height" value="480" />
         <arg name="depth_fps" value="30" />
         <arg name="align_depth" value="true" />
-    </include>
+    </include> -->
 
     <!-- Static transformations -->
     <node pkg="tf" type="static_transform_publisher" name="odom_to_map" args="0 0 0 0 0 0 map odom 100" />
@@ -23,11 +23,11 @@
         <param name="use_depth" value="false" />
         <param name="use_head_yaw" value="true" />
         <param name="head_yaw_joint_name" value="HeadYaw" />
-        <param name="reset_interval" value="10.0" />
+        <param name="reset_interval" value="30.0" />
         <param name="absolute_pose_timeout" value="300.0" />
-        <param name="config_file" value="$(find cssr_system)/robotLocalization/config/landmarks.yaml" />
+        <param name="landmark_file" value="$(find cssr_system)/robotLocalization/data/landmarks.json" />
         <param name="topics_file" value="$(find cssr_system)/robotLocalization/data/pepperTopics.dat" />
-        <param name="camera_info_file" value="$(find cssr_system)/robotLocalization/config/camera_info.yaml" />
+        <param name="camera_info_file" value="$(find cssr_system)/robotLocalization/config/camera_info.json" />
         <param name="camera_info_timeout" value="15.0" />
         <param name="map_frame" value="map" />
         <param name="odom_frame" value="odom" />
