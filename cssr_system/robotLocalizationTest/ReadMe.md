@@ -1,301 +1,227 @@
-# Robot Localization Component Unit Tests
+<div align="center">
+  <h1>Robot Localization Unit Test</h1>
+</div>
 
-This document describes the unit testing procedures for the `robotLocalization` component in accordance with the CSSR4Africa System Integration and Quality Assurance Manual.
+<div align="center">
+  <img src="CSSR4AfricaLogo.svg" alt="CSSR4Africa Logo" style="width:50%; height:auto;">
+</div>
 
-## Overview
+This module provides unit tests for the `robotLocalization` node within the CSSR4Africa project (`cssr_system` package). The unit tests validate the communication, computation, and configuration functionality of the component across three different testing environments: physical robot, simulator, and test harness with controlled data. The results are logged in the file `~/workspace/pepper_rob_ws/src/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat` for the physical robot and `~/workspace/pepper_sim_ws/src/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat` for the simulator robot.
 
-The `robotLocalization` component provides visual landmark-based pose estimation for pepper humanoid robot. These unit tests validate the communication, computation, and configuration functionality of the component across three different testing environments.
+# Documentation
+Accompanying this code is the deliverable report that provides a detailed explanation of the code and how to run the tests. The deliverable report can be found in [D4.2.4 Robot Localization](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf).
 
-## Test Launch Files
+# Run the Robot Localization Unit Test 
+## Physical Robot 
+### Steps
+1. **Install the required software components:**
 
-### 1. robotLocalizationLaunchRobot.launch
-**Purpose**: Tests component with physical Pepper robot and real sensors.
+  Install the required software components to instantiate and set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf). 
 
-**Data Sources**:
-- Physical RealSense RGB-D camera (`/camera/color/image_raw`, `/camera/aligned_depth_to_color/image_raw`)
-- Robot odometry (`/naoqi_driver/odom`)
-- Joint states from robot (`/joint_states`)
-- Camera calibration (`/camera/color/camera_info`)
+2. **Clone and build the project (if not already cloned)**:
+   - Move to the source directory of the workspace
+      ```bash 
+         cd $HOME/workspace/pepper_rob_ws/src
+       ```
+   - Clone the `CSSR4Africa` software from the GitHub repository
+      ```bash 
+         git clone https://github.com/cssr4africa/cssr4africa.git
+       ```
+   - Build the source files
+      ```bash 
+         cd .. && source devel/setup.bash && catkin_make
+       ```
+       
+3. **Update Configuration File:**
+   
+   Navigate to `~/workspace/pepper_rob_ws/src/unit_tests/robotLocalizationTest/config/robotLocalizationTestConfiguration.ini` and update the configuration according to the key-value pairs below:
 
-**Data Sinks**:
-- Robot pose estimates (`/robotLocalization/pose`)
-- Annotated marker images (`/robotLocalization/marker_image`)
+   | Parameter | Description | Values |
+   |-----------|-------------|---------|
+   | `platform` | Target platform | `robot` or `simulator` |
+   | `verbose` | Diagnostic info printing | `true`, `false` |
+   | `use_depth` | Enable depth-based trilateration | `true`, `false` |
+   | `use_head_yaw` | Compensate for head rotation | `true`, `false` |
+   | `reset_interval` | Automatic pose reset interval | `5.0`, `10.0`, `30.0` |
 
-**Expected Results**:
-- Continuous pose publication at ~1-10 Hz
-- Pose accuracy within ±0.2m position, ±5° orientation
-- Successful marker detection when 3+ ArUco markers visible
-- Automatic pose correction every 5 seconds (configurable)
+   - To execute the tests on the physical platform, change the first line of `robotLocalizationTestConfiguration.ini` file in the config folder to "`platform robot`". 
+   - Set up ArUco markers (DICT_4X4_100) in your environment at the coordinates specified in the test landmark configuration.
+  
 
-### 2. robotLocalizationLaunchSimulator.launch
-**Purpose**: Tests component in Gazebo simulation environment.
+    <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
+      <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
+      <span style="color: #cccccc;">If you want to modify other configuration values, please refer to the <a href="https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf" style="color: #66b3ff;">D4.2.4 Robot Localization</a>. Otherwise, the preferred values are the ones already set in the `robotLocalizationTestConfiguration.ini` file.</span>
+  </div>
 
-**Data Sources**:
-- Simulated RGB-D camera in Gazebo
-- Simulated robot odometry
-- Simulated joint states
-- Generated camera calibration
+4. **Run the `robotLocalizationTest` from the`unit_tests`  package**. 
 
-**Data Sinks**:
-- Same as robot test but in simulation coordinates
-- Test waypoint navigation validation
+    Follow below steps, run in different terminals.
+    -  Source the workspace in first terminal:
+        ```bash
+          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash
+        ```
+    -  Launch the robot:
+        ```bash
+          roslaunch unit_tests robotLocalizationLaunchTestRobot.launch robot_ip:=<robot_ip> roscore_ip:=<roscore_ip> network_interface:=<network_interface>
+        ```
+        <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
+         <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
+         <span style="color: #cccccc;">Ensure that the IP addresses <code>robot_ip</code> and <code>roscore_ip</code> and the network interface <code>network_interface</code> are correctly set based on your robot's configuration and your computer's network interface. </span>
+        </div>
+    - Open a new terminal to launch the robotLocalizationTest (which launches the robotLocalization node and run tests on it). This creates drivers for camera topics and stubs for pose validation.
+        ```bash
+          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch unit_tests robotLocalizationLaunchTestHarness.launch
+        ```
 
-**Expected Results**:
-- Pose tracking during simulated robot movement
-- Consistent localization accuracy across different viewpoints
-- Proper handling of simulated sensor noise and delays
+## Simulator Robot
+### Steps
+1. **Install the required software components:**
 
-### 3. robotLocalizationLaunchTestHarness.launch
-**Purpose**: Tests component with controlled test data drivers and result logging stubs.
+  Install the required software components to instantiate and set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf). 
 
-**Data Sources (Drivers)**:
-- Pre-recorded image sequences with known ArUco marker positions
-- Synthetic odometry data with known trajectories
-- Controlled camera calibration parameters
-- Programmed joint state sequences
+2. **Clone and build the project (if not already cloned)**:
+   - Move to the source directory of the workspace
+      ```bash 
+         cd $HOME/workspace/pepper_sim_ws/src
+       ```
+   - Clone the `CSSR4Africa` software from the GitHub repository
+      ```bash 
+         git clone https://github.com/cssr4africa/cssr4africa.git
+       ```
+   - Build the source files
+      ```bash 
+         cd .. && source devel/setup.bash && catkin_make
+       ```
+       
+3. **Update Configuration File:**
+   
+   Navigate to `~/workspace/pepper_sim_ws/src/unit_tests/robotLocalizationTest/config/robotLocalizationTestConfiguration.ini` and update the configuration according to the key-value pairs below:
 
-**Data Sinks (Stubs)**:
-- Pose data logger (CSV format)
-- Marker image logger (annotated images)
-- Service response logger
-- Performance metrics logger
+   | Parameter | Description | Values |
+   |-----------|-------------|---------|
+   | `platform` | Target platform | `robot` or `simulator` |
+   | `verbose` | Diagnostic info printing | `true`, `false` |
+   | `use_depth` | Enable depth-based trilateration | `true`, `false` |
+   | `use_head_yaw` | Compensate for head rotation | `true`, `false` |
+   | `reset_interval` | Automatic pose reset interval | `5.0`, `10.0`, `30.0` |
 
-**Expected Results**:
-- Reproducible pose estimation results
-- Service response validation
-- Performance metrics within acceptable bounds
+   - To execute the tests on the simulator platform, change the first line of `robotLocalizationTestConfiguration.ini` file in the config folder to "`platform simulator`". 
+   - Ensure the landmark configuration matches your simulation environment.
+  
 
-## Communication Functionality Validation
+    <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
+      <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
+      <span style="color: #cccccc;">If you want to modify other configuration values, please refer to the <a href="https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf" style="color: #66b3ff;">D4.2.4 Robot Localization</a>. Otherwise, the preferred values are the ones already set in the `robotLocalizationTestConfiguration.ini` file.</span>
+  </div>
 
-### Input Data Processing
-The component validates proper handling of:
+4. **Run the `robotLocalizationTest` from the `unit_tests`  package**. 
 
-**RGB Image Data** (`sensor_msgs/Image`):
-- **Input**: 1280x720 BGR8 images at 5-30 Hz
-- **Expected Output**: ArUco marker detection and pose computation
-- **Validation**: Annotated images showing detected markers with IDs
+    Follow below steps, run in different terminals.
+    -  Source the workspace in first terminal:
+        ```bash
+          cd $HOME/workspace/pepper_sim_ws && source devel/setup.bash
+        ```
+    -  Launch the simulator robot:
+        ```bash
+          roslaunch unit_tests robotLocalizationLaunchTestSimulator.launch
+        ```
 
-**Depth Image Data** (`sensor_msgs/Image`):
-- **Input**: 848x480 depth images (16UC1 or 32FC1) aligned to RGB
-- **Expected Output**: Distance measurements for trilateration
-- **Validation**: Pose estimates using depth-based algorithm when `use_depth=true`
+    - Open a new terminal to launch the robotLocalizationTest (which launches the robotLocalization node and run tests on it). This creates drivers for camera topics and stubs for pose validation.
+        ```bash
+          cd $HOME/workspace/pepper_sim_ws && source devel/setup.bash && roslaunch unit_tests robotLocalizationLaunchTestHarness.launch
+        ```
 
-**Odometry Data** (`nav_msgs/Odometry`):
-- **Input**: Robot pose and velocity in odometry frame
-- **Expected Output**: Continuous pose updates between absolute corrections
-- **Validation**: Smooth pose interpolation, drift correction after landmark detection
+## Tests Executed
+### Test A: Communication Functionality Validation
+The Test A contains the following:
+  - `Test A_1`: Input Data Processing (RGB images, depth images, odometry, camera calibration)
+  - `Test A_2`: Output Data Generation (pose publication, marker image publication)
 
-**Camera Calibration** (`sensor_msgs/CameraInfo`):
-- **Input**: Camera intrinsic matrix (fx, fy, cx, cy)
-- **Expected Output**: Accurate angle computations for triangulation
-- **Validation**: Geometric consistency in pose estimates
+The robot is expected to perform the following:
+- Process RGB images at 5-30 Hz and detect ArUco markers
+- Handle depth images for trilateration when enabled
+- Publish pose estimates at 1-10 Hz
+- Generate annotated marker images showing detection results
 
-### Output Data Generation
-**Pose Publication** (`geometry_msgs/Pose2D`):
-- **Format**: x (meters), y (meters), theta (degrees)
-- **Rate**: 1-10 Hz depending on odometry input rate
-- **Validation**: Compare against known landmark positions and expected robot trajectory
+### Test B: Computation Functionality Validation
+The Test B contains the following:
+  - `Test B_1`: Triangulation Algorithm Testing (RGB-only pose computation)
+  - `Test B_2`: Trilateration Algorithm Testing (RGB-D pose computation with depth)
 
-**Marker Image Publication** (`sensor_msgs/Image`):
-- **Format**: Annotated RGB images with detected ArUco markers outlined
-- **Rate**: Same as input image rate when markers detected
-- **Validation**: Visual confirmation of marker detection accuracy
+The robot is expected to perform the following:
+- Achieve position accuracy within ±0.2m for triangulation mode
+- Achieve position accuracy within ±0.5m for trilateration mode
+- Maintain orientation accuracy within ±5° under good conditions
+- Perform sensor fusion between odometry and landmark detection
 
-## Computation Functionality Validation
+### Test C: Configuration Functionality Validation
+The Test C contains the following:
+  - `Test C_1`: Parameter Impact Testing (verbose mode, depth usage, reset intervals)
+  - `Test C_2`: Landmark and Camera Configuration Testing (marker positions, camera calibration)
 
-### Triangulation Algorithm Testing
-**Test Scenario**: Robot positioned at known locations with 3+ visible markers
+The robot is expected to perform the following:
+- Respond appropriately to configuration parameter changes
+- Handle different landmark configurations and camera calibrations
+- Demonstrate robust performance across various parameter settings
+- Show degraded performance with intentionally incorrect configurations
 
-**Input Data**:
-- RGB images containing ArUco markers at IDs [0, 1, 2, 3, 4]
-- Known landmark positions: (1.0, 2.0), (3.0, 2.0), (2.0, 4.0), etc.
-- Camera intrinsics: fx=525.0, fy=525.0, cx=319.5, cy=239.5
+## Results
+The results of the test is logged in the `~/workspace/pepper_rob_ws/src/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat` file for the physical robot and `~/workspace/pepper_sim_ws/src/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat` file for the simulator robot. It contains the test ran, the input commands and the status of the test. Below is the output of the test when some sample configuration is set:
 
-**Expected Output**:
-- Position accuracy: ±0.1m for distances <5m, ±0.2m for distances 5-10m
-- Orientation accuracy: ±5° under good lighting, ±10° under challenging conditions
-- Algorithm should reject degenerate configurations (collinear markers, extreme angles)
+```
+Robot Localization Test Report: robot
+====================================
+Date: 2025-07-15 14:03:22
 
-**Validation Method**:
-```bash
-# Set known robot pose
-rosservice call /robotLocalization/set_pose 2.0 3.0 0.0
+Test A: Communication Functionality
+	Input Data Processing
+		RGB Image Processing     : PASSED
+		Depth Image Processing   : PASSED  
+		Odometry Processing      : PASSED
+		Camera Info Processing   : PASSED
+	Output Data Generation
+		Pose Publication         : PASSED
+		Marker Image Publication : PASSED
+	Result: PASSED
 
-# Wait for automatic reset from landmarks
-# Check pose output matches expected position within tolerance
-rostopic echo /robotLocalization/pose
+Test B: Computation Functionality  
+	Triangulation Algorithm
+		Position Accuracy        : PASSED (±0.15m)
+		Orientation Accuracy     : PASSED (±4.2°)
+	Trilateration Algorithm  
+		Position Accuracy        : PASSED (±0.35m)
+		Orientation Accuracy     : PASSED (±4.8°)
+	Sensor Fusion
+		Odometry Integration     : PASSED
+		Drift Correction        : PASSED
+	Result: PASSED
+
+Test C: Configuration Functionality
+	Parameter Impact Testing
+		Verbose Mode Toggle      : PASSED
+		Depth Usage Toggle       : PASSED
+		Reset Interval Change    : PASSED
+		Head Yaw Compensation    : PASSED
+	Configuration Validation
+		Landmark Positions       : PASSED
+		Camera Calibration       : PASSED
+		Invalid Config Handling  : PASSED
+	Result: PASSED
+
+Performance Metrics:
+	Pose Publication Rate    : 8.5 Hz
+	Position Accuracy (RGB)  : ±0.15m
+	Position Accuracy (RGB-D): ±0.35m  
+	Orientation Accuracy     : ±4.2°
+	Landmark Detection Rate  : 94%
+	System Latency          : 285ms
+
+Overall Test Result: PASSED
 ```
 
-### Trilateration Algorithm Testing (Depth Mode)
-**Test Scenario**: Same positions as triangulation but with depth data enabled
+## Performance Metrics and Success Criteria
 
-**Input Data**:
-- RGB images + aligned depth images
-- Distance measurements to landmarks (from depth camera)
-
-**Expected Output**:
-- Accuracy: ±0.5m position, ±3° orientation
-
-**Validation Method**:
-```bash
-# Enable depth mode
-rosparam set /robotLocalization/use_depth true
-
-# Reset and compare results
-rosservice call /robotLocalization/reset_pose
-```
-
-### Sensor Fusion Testing
-**Test Scenario**: Robot movement with intermittent landmark visibility
-
-**Input Data**:
-- Continuous odometry stream during movement
-- Periodic landmark detections (every 5-30 seconds)
-
-**Expected Output**:
-- Smooth pose updates during movement using odometry
-- Drift correction when landmarks reappear
-- No pose jumps >0.2m during corrections
-
-**Validation Method**:
-Monitor pose continuity during programmed robot movements or test harness replay.
-
-## Configuration Functionality Validation
-
-### Parameter Impact Testing
-
-**1. Verbose Mode Parameter**
-```ini
-verbose = true/false
-```
-**Expected Behavior Change**:
-- `true`: Detailed diagnostic messages, marker detection logs, pose computation details
-- `false`: Minimal output, only errors and warnings
-
-**Validation**:
-```bash
-# Test verbose output
-rosparam set /robotLocalization/verbose true
-# Observe increased log output
-
-rosparam set /robotLocalization/verbose false  
-# Observe reduced log output
-```
-
-**2. Depth Usage Parameter**
-```ini
-use_depth = true/false
-```
-**Expected Behavior Change**:
-- `true`: Uses trilateration algorithm with depth measurements
-- `false`: Uses triangulation algorithm with angle measurements only
-
-**Validation**:
-Compare pose accuracy and computation time between modes. Angle mode should show better accuracy.
-
-**3. Reset Interval Parameter**
-```ini
-reset_interval = 5.0/10.0/30.0 (seconds)
-```
-**Expected Behavior Change**:
-- Shorter intervals: More frequent pose corrections, higher computational load
-- Longer intervals: Less drift correction, lower computational load
-
-**Validation**:
-```bash
-# Test different intervals
-rosparam set /robotLocalization/reset_interval 5.0
-# Monitor reset frequency in logs
-
-rosparam set /robotLocalization/reset_interval 30.0
-# Verify reduced reset frequency
-```
-
-**4. Head Yaw Compensation Parameter**
-```ini
-use_head_yaw = true/false
-head_yaw_joint_name = "HeadYaw"
-```
-**Expected Behavior Change**:
-- `true`: Compensates for head rotation in yaw calculations
-- `false`: Assumes fixed head orientation
-
-**Validation**:
-Move robot head and observe pose estimate stability. With compensation enabled, pose should remain stable during head movement.
-
-**5. Camera Configuration Parameters**
-```yaml
-camera_info:
-  fx: 525.0  # Focal length changes
-  fy: 525.0
-  cx: 319.5  # Principal point changes  
-  cy: 239.5
-```
-**Expected Behavior Change**:
-- Incorrect focal lengths: Systematic position errors
-- Incorrect principal point: Angular bias in pose estimates
-
-**Validation**:
-Deliberately modify camera parameters and observe pose estimation degradation.
-
-**6. Landmark Configuration Impact**
-```yaml
-landmarks:
-  - id: 0
-    x: 1.0    # Position accuracy affects system accuracy
-    y: 2.0
-    z: 1.225
-```
-**Expected Behavior Change**:
-- Inaccurate landmark positions: Systematic pose errors
-- Insufficient landmarks: Reduced robustness
-- Poor landmark distribution: Increased geometric dilution of precision
-
-**Validation**:
-Test with different landmark configurations:
-- Minimum 3 landmarks (triangle)
-- Collinear landmarks (should be rejected)
-
-## Test Execution Commands
-
-### Physical Robot Testing
-```bash
-# Terminal 1: Launch robot connection
-roslaunch cssr_system robotLocalizationLaunchRobot.launch robot_ip:=172.111.29.240
-
-# Terminal 2: Monitor results
-rostopic echo /robotLocalization/pose
-rosrun image_view image_view image:=/robotLocalization/marker_image
-
-# Terminal 3: Test services
-rosservice call /robotLocalization/set_pose 2.0 6.6 0.0
-rosservice call /robotLocalization/reset_pose
-```
-
-### Simulation Testing
-```bash
-# Terminal 1: Launch simulation
-roslaunch cssr_system robotLocalizationLaunchSimulator.launch gui:=true
-
-# Terminal 2: Monitor and control
-rostopic echo /robotLocalization/pose
-# Robot will move automatically through test waypoints
-```
-
-### Test Harness Testing
-```bash
-# Terminal 1: Launch test harness
-roslaunch cssr_system robotLocalizationLaunchTestHarness.launch test_scenario:=basic_localization
-
-# Results will be logged to:
-# - test_results/pose_log_basic_localization.csv
-# - test_results/marker_images_basic_localization/
-# - test_results/validation_basic_localization.csv
-```
-
-## Expected Test Results
-
-### Performance Metrics
+### Expected Performance Metrics
 - **Pose Publication Rate**: 1-10 Hz
 - **Position Accuracy**: ±0.2m (RGB), ±0.5m (RGB-D)
 - **Orientation Accuracy**: ±5° (RGB), ±5° (RGB-D)
@@ -310,61 +236,38 @@ roslaunch cssr_system robotLocalizationLaunchTestHarness.launch test_scenario:=b
 5. **Robustness**: Graceful handling of missing data, invalid configurations
 6. **Heartbeat**: "robotLocalization: running" message every 10 seconds
 
-### Failure Indicators
-- No pose output after 30 seconds
-- Pose accuracy >0.5m consistently
-- No marker detection with visible markers
-- System crashes or memory leaks
-- Parameter changes ignored
-
-## Troubleshooting Test Issues
-
-### Common Test Failures
-
-**1. No Camera Data**
+### Test Commands for Manual Validation
 ```bash
-# Check camera topics
-rostopic list | grep camera
-rostopic hz /camera/color/image_raw
+# Monitor pose output
+rostopic echo /robotLocalization/pose
 
-# Verify camera launch
-roslaunch realsense2_camera rs_camera.launch
-```
+# View marker detection
+rosrun image_view image_view image:=/robotLocalization/marker_image
 
-**2. No Landmark Detection**
-- Verify ArUco markers use DICT_4X4_100 dictionary
-- Check marker placement matches landmarks.yaml
-- Ensure adequate lighting and marker visibility
-- Verify camera calibration accuracy
-
-**3. Inaccurate Poses**
-- Validate landmark position measurements
-- Check camera calibration parameters
-- Verify coordinate frame transformations
-- Test with known reference positions
-
-**4. Service Failures**
-```bash
-# Check service availability
-rosservice list | grep robotLocalization
-rosservice info /robotLocalization/set_pose
-
-# Test service manually
+# Test services
+rosservice call /robotLocalization/set_pose 2.0 6.6 0.0
 rosservice call /robotLocalization/reset_pose
+
+# Check performance
+rostopic hz /robotLocalization/pose
+rostopic hz /camera/color/image_raw
 ```
 
-## Test Data Requirements
+## 
+<div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
+      <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
+      <span style="color: #cccccc;">To fully understand the configuration values, data requirements, debugging processes, and the overall functionality of the robotLocalizationTest node, please refer to the <a href="https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf" style="color: #66b3ff;">D4.2.4 Robot Localization</a>. These manuals provide comprehensive explanations and step-by-step instructions essential for effective use and troubleshooting.</span>
+  </div>
+  
+## Support
 
-### Test Harness Data Files
-- `test_data/test_odometry.csv`: Synthetic odometry trajectories
-- `test_data/test_images/`: RGB image sequences with ArUco markers
-- `test_data/test_depth/`: Corresponding depth images
-- `test_data/test_camera_info.yaml`: Known camera calibration
-- `test_data/expected_poses_*.csv`: Ground truth poses for validation
+For issues or questions:
+- Create an issue on GitHub
+- Contact: <a href="mailto:dvernon@andrew.cmu.edu">dvernon@andrew.cmu.edu</a>, <a href="mailto:ioj@andrew.cmu.edu">ioj@andrew.cmu.edu</a><br>
+- Visit: <a href="http://www.cssr4africa.org">www.cssr4africa.org</a>
 
-### Landmark Configuration Files
-- `config/test_landmarks.yaml`: Test environment marker positions
-- `config/test_camera_info.yaml`: Camera parameters for testing
-- `data/testHarnessTopics.dat`: Topic remapping for test harness
+## License  
+Funded by African Engineering and Technology Network (Afretec)  
+Inclusive Digital Transformation Research Grant Programme
 
-This comprehensive testing framework ensures the `robotLocalization` component meets all CSSR4Africa quality standards for communication, computation, and configuration functionality.
+Date:   2025-07-15

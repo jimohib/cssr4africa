@@ -1,107 +1,121 @@
-/* robotLocalizationApplication.cpp
+/* robotLocalizationApplication.cpp  program initialization and main function execution
  *
+ * Author: Ibrahim Olaide Jimoh, Carnegie Mellon University Africa
+ * Email: ioj@andrew.cmu.edu
+ * Date: June 25, 2025
+ * Version: v1.0
+ *
+ * Copyright (C) 2025 CSSR4Africa Consortium
+ *
+ * This project is funded by the African Engineering and Technology Network (Afretec)
+ * Inclusive Digital Transformation Research Grant Programme.
+ *
+ * Website: www.cssr4africa.org
+ *
+ * This program comes with ABSOLUTELY NO WARRANTY.
+
  * This node is responsible for determining the robot's absolute position and orientation in the environment using visual landmark detection and sensor fusion.
  * The node combines ArUco marker detection from RGB and depth cameras with odometry data to provide accurate 6-DOF pose estimation.
  * The system uses triangulation (RGB-only) or trilateration (with depth) algorithms to compute absolute poses from detected landmarks, then maintains relative positioning through odometry integration.
  * The node supports both periodic automatic pose correction and on-demand pose reset services for robust localization in dynamic environments.
  *
  * Libraries
- * Standard libraries - std::string, std::vector, std::map, std::fstream, std::algorithm, std::numeric, std::sqrt, std::abs, std::atan2, std::cos, std::sin
- * ROS libraries - ros/ros.h, nav_msgs/Odometry.h, sensor_msgs/Imu.h, sensor_msgs/Image.h, sensor_msgs/JointState.h, sensor_msgs/CameraInfo.h, geometry_msgs/Pose2D.h, geometry_msgs/TransformStamped.h
- * ROS TF libraries - tf2/LinearMath/Quaternion.h, tf2_geometry_msgs/tf2_geometry_msgs.h, tf2_ros/transform_listener.h, tf2_ros/buffer.h
- * OpenCV libraries - opencv2/opencv.hpp, opencv2/aruco.hpp, cv_bridge/cv_bridge.h
- * Image transport - image_transport/image_transport.h
- * Utility libraries - angles/angles.h, yaml-cpp/yaml.h
- * 
+    * Standard libraries - std::string, std::vector, std::map, std::fstream, std::algorithm, std::numeric, std::sqrt, std::abs, std::atan2, std::cos, std::sin
+    * ROS libraries - ros/ros.h, nav_msgs/Odometry.h, sensor_msgs/Imu.h, sensor_msgs/Image.h, sensor_msgs/JointState.h, sensor_msgs/CameraInfo.h, geometry_msgs/Pose2D.h, geometry_msgs/TransformStamped.h
+    * ROS TF libraries - tf2/LinearMath/Quaternion.h, tf2_geometry_msgs/tf2_geometry_msgs.h, tf2_ros/transform_listener.h, tf2_ros/buffer.h
+    * OpenCV libraries - opencv2/opencv.hpp, opencv2/aruco.hpp, cv_bridge/cv_bridge.h
+    * Image transport - image_transport/image_transport.h
+    * Utility libraries - angles/angles.h, yaml-cpp/yaml.h
+    * 
  * Parameters
- *
- * Command-line Parameters
- *
- * None
- *
- * Configuration File Parameters
- * Key                   |     Value 
- * --------------------- |     -------------------
- * verbose               |     false
- * use_depth             |     false
- * use_head_yaw          |     false
- * head_yaw_joint_name   |     HeadYaw
- * reset_interval        |     30.0
- * absolute_pose_timeout |     300.0
- * landmark_file           |     config/landmarks.yaml
- * topics_file           |     data/pepperTopics.dat
- * camera_info_file      |     config/camera_info.yaml
- * camera_info_timeout   |     10.0
- * map_frame             |     map
- * odom_frame            |     odom
- *
+    *
+    * Command-line Parameters
+    *
+        * None
+        *
+    * Configuration File Parameters
+    * Key                   |     Value 
+    * --------------------- |     -------------------
+    * verbose               |     false
+    * use_depth             |     false
+    * use_head_yaw          |     false
+    * head_yaw_joint_name   |     HeadYaw
+    * reset_interval        |     30.0
+    * absolute_pose_timeout |     300.0
+    * landmark_file           |     config/landmarks.yaml
+    * topics_file           |     data/pepperTopics.dat
+    * camera_info_file      |     config/camera_info.yaml
+    * camera_info_timeout   |     10.0
+    * map_frame             |     map
+    * odom_frame            |     odom
+    *
  * Subscribed Topics and Message Types
- *
- * /pepper_dcm/odom                                              nav_msgs/Odometry
- * /pepper_dcm/imu                                               sensor_msgs/Imu
- * /camera/color/image_raw                                       sensor_msgs/Image
- * /camera/depth/image_raw                                       sensor_msgs/Image
- * /joint_states                                                 sensor_msgs/JointState
- * /camera/color/camera_info                                     sensor_msgs/CameraInfo
- *
+    *
+    * /pepper_dcm/odom                                              nav_msgs/Odometry
+    * /pepper_dcm/imu                                               sensor_msgs/Imu
+    * /camera/color/image_raw                                       sensor_msgs/Image
+    * /camera/depth/image_raw                                       sensor_msgs/Image
+    * /joint_states                                                 sensor_msgs/JointState
+    * /camera/color/camera_info                                     sensor_msgs/CameraInfo
+    *
  * Published Topics and Message Types
- * 
- * /robotLocalization/pose                                       geometry_msgs/Pose2D
- * /robotLocalization/marker_image                               sensor_msgs/Image
- *
+    * 
+    * /robotLocalization/pose                                       geometry_msgs/Pose2D
+    * /robotLocalization/marker_image                               sensor_msgs/Image
+    *
  * Services Invoked
- *
- * None
- *
+    *
+    * None
+    *
  * Services Advertised and Message Types
- *
- * /robotLocalization/reset_pose                                 cssr_system/ResetPose
- * /robotLocalization/set_pose                                   cssr_system/SetPose
- *
+    *
+    * /robotLocalization/reset_pose                                 cssr_system/ResetPose
+    * /robotLocalization/set_pose                                   cssr_system/SetPose
+    *
  * Input Data Files
- *
- * pepperTopics.dat - Contains topic names for robot sensors and actuators
- * landmarks.yaml - 3D coordinates of ArUco markers in the environment
- * camera_info.yaml - Camera intrinsic parameters for fallback (fx, fy, cx, cy)
- *
+    *
+    * pepperTopics.dat - Contains topic names for robot sensors and actuators
+    * landmarks.yaml - 3D coordinates of ArUco markers in the environment
+    * camera_info.yaml - Camera intrinsic parameters for fallback (fx, fy, cx, cy)
+    *
  * Output Data Files
- *
- * None (publishes pose data via ROS topics)
- *
+    *
+    * None (publishes pose data via ROS topics)
+    *
  * Configuration Files
- *
- * landmarks.yaml - Landmark configuration with marker IDs and 3D positions
- * camera_info.yaml - Camera calibration parameters
- * pepperTopics.dat - Topic mapping configuration
- *
+    *
+    * landmarks.yaml - Landmark configuration with marker IDs and 3D positions
+    * camera_info.yaml - Camera calibration parameters
+    * pepperTopics.dat - Topic mapping configuration
+    *
  * Example Instantiation of the Module
- *
- * roslaunch cssr_system robotLocalizationLaunchRobot.launch
- *
+    *
+    * roslaunch cssr_system robotLocalizationLaunchRobot.launch
+    *
  * Key Algorithms
- *
- * Triangulation Algorithm (RGB-only mode):
- * - Detects ArUco markers in camera image
- * - Computes viewing angles between marker pairs using camera intrinsics
- * - Uses geometric triangulation with circle-circle intersection to determine robot position
- * - Employs multi-solution scoring system based on geometric constraints
- *
- * Trilateration Algorithm (Depth mode):
- * - Combines ArUco detection with depth measurements
- * - Solves system of distance equations to determine robot position
- * - Uses least-squares approach for overdetermined systems
- *
- * Pose Fusion:
- * - Maintains baseline pose from absolute measurements
- * - Integrates odometry for continuous pose updates
- * - Applies periodic corrections to prevent drift accumulation
- *
- * Marker Detection Pipeline:
- * - Sorts detected markers by position or ID for consistent processing
- * - Validates marker configurations for geometric feasibility
- * - Rejects degenerate cases (collinear markers, extreme angles)
- * - Publishes annotated images showing detected markers
- *
+    *
+    * Triangulation Algorithm (RGB-only mode):
+    * - Detects ArUco markers in camera image
+    * - Computes viewing angles between marker pairs using camera intrinsics
+    * - Uses geometric triangulation with circle-circle intersection to determine robot position
+    * - Employs multi-solution scoring system based on geometric constraints
+    *
+    * Trilateration Algorithm (Depth mode):
+    * - Combines ArUco detection with depth measurements
+    * - Solves system of distance equations to determine robot position
+    * - Uses least-squares approach for overdetermined systems
+    *
+    * Pose Fusion:
+    * - Maintains baseline pose from absolute measurements
+    * - Integrates odometry for continuous pose updates
+    * - Applies periodic corrections to prevent drift accumulation
+    *
+    * Marker Detection Pipeline:
+    * - Sorts detected markers by position or ID for consistent processing
+    * - Validates marker configurations for geometric feasibility
+    * - Rejects degenerate cases (collinear markers, extreme angles)
+    * - Publishes annotated images showing detected markers
+    *
 ...
 *
 * Author: Ibrahim Olaide Jimoh, Carnegie Mellon University Africa
