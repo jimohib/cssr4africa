@@ -129,11 +129,24 @@ RobotLocalizationNode::RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(
     nh_.param("map_frame", map_frame_, std::string("map"));
     nh_.param("odom_frame", odom_frame_, std::string("odom"));
 
+    nh_.param("enable_head_scanning", enable_head_scanning_, true);
+    nh_.param("use_interval_timer", use_interval_timer_, false);
+    nh_.param("perform_startup_localization", perform_startup_localization_, true);
+    nh_.param("head_scan_range", head_scan_range_, 1.57);  // 90 degrees in radians
+    nh_.param("head_scan_step", head_scan_step_, 0.52);    // 30 degrees in radians
+    nh_.param("head_scan_speed", head_scan_speed_, 0.5);
+    nh_.param("head_scan_timeout", head_scan_timeout_, 30.0);
+    nh_.param("marker_detection_threshold", marker_detection_threshold_, 3.0);
+
     // Load topic names
     loadTopicNames();
 
     // Load landmark coordinates
     loadLandmarks();
+
+    if (enable_head_scanning_) {
+        initializeHeadScanPositions();
+    }
 
     // Subscribers
     odom_sub_ = nh_.subscribe(topic_map_["Odometry"], 10, &RobotLocalizationNode::odomCallback, this);
@@ -146,6 +159,11 @@ RobotLocalizationNode::RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(
     // Publishers
     pose_pub_ = nh_.advertise<geometry_msgs::Pose2D>("/robotLocalization/pose", 10);
     image_pub_ = it_.advertise("/robotLocalization/marker_image", 10);
+    localization_status_pub_ = nh_.advertise<std_msgs::String>("/robotLocalization/status", 10);
+
+    if (enable_head_scanning_) {
+        head_yaw_pub_ = nh_.advertise<std_msgs::Float64>("/pepper_dcm/HeadYaw_position_controller/command", 10);
+    }
 
     // Service
     reset_srv_ = nh_.advertiseService("/robotLocalization/reset_pose", &RobotLocalizationNode::resetPoseCallback, this);
@@ -161,22 +179,51 @@ RobotLocalizationNode::RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(
     last_odom_pose_ = current_pose_;
     last_absolute_pose_time_ = ros::Time(0);
 
-    // Initialize other variables
+    // Status variables
     camera_info_received_ = false;
     first_odom_received_ = false;
+    initial_localization_complete_ = false;
+
+    // Sensor variables
     head_yaw_ = 0.0;
+    original_head_yaw_ = 0.0;
     camera_height_ = 1.225;
     fx_ = 0.0; fy_ = 0.0; cx_ = 0.0; cy_ = 0.0;
+
+    // Odometry variables
     initial_robot_x = 0.0; initial_robot_y = 0.0; initial_robot_theta = 0.0;
     adjustment_x_ = 0.0; adjustment_y_ = 0.0; adjustment_theta_ = 0.0;
     odom_x_ = 0.0; odom_y_ = 0.0; odom_theta_ = 0.0;
 
-    // Timer for periodic reset
-    reset_timer_ = nh_.createTimer(ros::Duration(reset_interval_), &RobotLocalizationNode::resetTimerCallback, this);
+    // Head scanning variables
+    head_scan_state_ = HeadScanState::IDLE;
+    current_scan_index_ = 0;
+    head_movement_complete_ = false;
+    target_head_yaw_ = 0.0;
+    clearAccumulatedMarkers();
+
+    // Interval timer for periodic reset
+    if (use_interval_timer_) {
+        reset_timer_ = nh_.createTimer(ros::Duration(reset_interval_), &RobotLocalizationNode::resetTimerCallback, this);
+        ROS_INFO("Interval-based localization enabled with %.1f second intervals", reset_interval_);
+    }
 
     // Timer for camera info timeout
     camera_info_timer_ = nh_.createTimer(ros::Duration(camera_info_timeout_), &RobotLocalizationNode::cameraInfoTimeoutCallback, this, true);
 
+    ROS_INFO("=== Robot Localization Configuration ===");
+    ROS_INFO("Startup localization: %s", perform_startup_localization_ ? "ENABLED" : "DISABLED");
+    ROS_INFO("Interval timer: %s (%.1fs)", use_interval_timer_ ? "ENABLED" : "DISABLED", reset_interval_);
+    ROS_INFO("Head scanning: %s", enable_head_scanning_ ? "ENABLED" : "DISABLED");
+    ROS_INFO("Service-based localization: ENABLED (call from behavior tree)");
+    
+    if (enable_head_scanning_) {
+        ROS_INFO("  Scan range: ±%.1f degrees", head_scan_range_ * 180.0/M_PI);
+        ROS_INFO("  Scan step: %.1f degrees", head_scan_step_ * 180.0/M_PI);
+        ROS_INFO("  Scan timeout: %.1f seconds", head_scan_timeout_);
+        ROS_INFO("  Marker accumulation: ENABLED");
+    }
+    ROS_INFO("================================================");
     ROS_INFO("Robot Localization Node initialized");
 }
 
