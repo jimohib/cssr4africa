@@ -34,11 +34,11 @@ Accompanying this code is the deliverable report that provides a detailed explan
          cd .. && source devel/setup.bash && catkin_make
        ```
        
-3. **Update Configuration Files:**
+3. **Update Data and Configuration Files:**
    
    Navigate to the configuration files and update them according to your environment setup:
 
-   **Launch File Configuration** (`launch/robotLocalization.launch`):
+   **Launch File Configuration** (`launch/robotLocalizationLaunchRobot.launch`):
    | Parameter | Description | Values | Default |
    |-----------|-------------|---------|---------|
    | `verbose` | Diagnostic info printing | `true`, `false` | `false` |
@@ -48,26 +48,33 @@ Accompanying this code is the deliverable report that provides a detailed explan
    | `reset_interval` | Automatic pose reset interval (seconds) | Float | `10.0` |
    | `absolute_pose_timeout` | Timeout for pose validity (seconds) | Float | `300.0` |
 
-   **Landmark Configuration** (`config/landmarks.yaml`):
-   ```yaml
-   landmarks:
-     - id: 0
-       x: 1.0    # X coordinate in meters
-       y: 2.0    # Y coordinate in meters  
-       z: 1.225  # Z coordinate in meters (camera height)
-     - id: 1
-       x: 3.0
-       y: 2.0
-       z: 1.225
+   **Landmark Data** (`data/landmarks.json`):
+   ```json
+   "landmarks": [
+    {
+      "id": 1,
+      "x": 5.0,
+      "y": 4.8,
+      "z": 0.71
+    },
+    {
+      "id": 2,
+      "x": 2.0,
+      "y": 5.4,
+      "z": 0.71
+    },]
    ```
 
-   **Camera Calibration** (`config/camera_info.yaml`):
-   ```yaml
-   camera_info:
-     fx: 525.0  # Focal length X
-     fy: 525.0  # Focal length Y
-     cx: 319.5  # Principal point X
-     cy: 239.5  # Principal point Y
+   **Camera Calibration** (`config/camera_info.json`):
+   ```json
+      {
+   "camera_info": {
+      "fx": 911.6033325195312,
+      "fy": 910.8851318359375,
+      "cx": 655.0755615234375,
+      "cy": 363.9165954589844
+   }
+   }
    ```
 
     <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
@@ -77,7 +84,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
 
 4. **Set up ArUco Markers:**
    
-   Place ArUco markers (DICT_4X4_100) in your environment at the coordinates specified in `landmarks.yaml`. Ensure markers are:
+   Place ArUco markers (DICT_4X4_100) in your environment at the coordinates specified in `landmarks.json`. Ensure markers are:
    - Clearly visible from robot operating areas
    - At appropriate heights (recommended: camera height ±0.5m)
    - Well-distributed to avoid collinear configurations
@@ -100,7 +107,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
         </div>
     - Open a new terminal to launch the `robotLocalization` node.
         ```bash
-          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalization.launch
+          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationLaunchRobot.launch
         ```
         
         **Or run the node standalone** (if camera is already launched):
@@ -108,7 +115,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
           cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && rosrun cssr_system robotLocalization
         ```
     
-      N.B: Running the `robotLocalization` node requires camera topics (`/camera/color/image_raw`, `/camera/depth/image_raw`, `/camera/color/camera_info`) and odometry topic (`/pepper_dcm/odom`) to be available from the robot or simulation environment.
+      N.B: Running the `robotLocalization` node requires camera topics (`/camera/color/image_raw`, `/camera/depth/image_raw`, `/camera/color/camera_info`) and odometry topic (`/naoqi_driver/odom`) to be available from the robot or simulation environment.
 
 ## Simulator Robot
 
@@ -135,7 +142,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
    
    Navigate to the configuration files located at `~/workspace/pepper_sim_ws/src/cssr4africa/robotLocalization/config/` and update the configuration according to your simulation environment setup.
 
-   **Launch File Configuration** (`launch/robotLocalization.launch`):
+   **Launch File Configuration** (`launch/robotLocalizationLaunchRobot.launch`):
    | Parameter | Description | Values | Default |
    |-----------|-------------|---------|---------|
    | `verbose` | Diagnostic info printing | `true`, `false` | `false` |
@@ -163,7 +170,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
         ```
     - Open a new terminal to launch the `robotLocalization` node.
         ```bash
-          cd $HOME/workspace/pepper_sim_ws && source devel/setup.bash && roslaunch cssr_system robotLocalization.launch
+          cd $HOME/workspace/pepper_sim_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationLaunchRobot.launch
         ```
         
         **Or run the node standalone** (if camera is already launched):
@@ -218,9 +225,9 @@ rostopic echo /robotLocalization/pose
   ```sh
   rosservice call /robotLocalization/set_pose 2.0 6.6 0.0
   ```
-- Set robot facing -45 degrees (use quotes for negative values):
+- Set robot facing -45 degrees (360 degrees - 45 degrees):
   ```sh
-  rosservice call /robotLocalization/set_pose "{x: 2.0, y: 6.6, theta: -45.0}"
+  rosservice call /robotLocalization/set_pose 2.0 6.6 315.0
   ```
 - Trigger pose reset from landmarks:
   ```sh

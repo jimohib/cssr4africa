@@ -6,7 +6,7 @@
   <img src="CSSR4AfricaLogo.svg" alt="CSSR4Africa Logo" style="width:50%; height:auto;">
 </div>
 
-This module provides unit tests for the `robotLocalization` node within the CSSR4Africa project (`cssr_system` package). The unit tests validate the communication, computation, and configuration functionality of the component across three different testing environments: physical robot, simulator, and test harness with controlled data. The results are logged in the file `~/workspace/pepper_rob_ws/src/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat` for the physical robot and `~/workspace/pepper_sim_ws/src/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat` for the simulator robot.
+This module provides unit tests for the `robotLocalization` node within the CSSR4Africa project (`cssr_system` package). The unit tests validate the communication, computation, and configuration functionality of the component across three different testing environments: physical robot, simulator, and test harness with controlled data. The results are logged in the file `~/workspace/pepper_rob_ws/src/unit_tests/robotLocalizationTest/test_data/robotLocalizationTestOutput.dat` for the physical robot and `~/workspace/pepper_sim_ws/src/unit_tests/robotLocalizationTest/test_data/robotLocalizationTestOutput.dat` for the simulator robot.
 
 # Documentation
 Accompanying this code is the deliverable report that provides a detailed explanation of the code and how to run the tests. The deliverable report can be found in [D4.2.4 Robot Localization](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf).
@@ -45,7 +45,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
    | `reset_interval` | Automatic pose reset interval | `5.0`, `10.0`, `30.0` |
 
    - To execute the tests on the physical platform, change the first line of `robotLocalizationTestConfiguration.ini` file in the config folder to "`platform robot`". 
-   - Set up ArUco markers (DICT_4X4_100) in your environment at the coordinates specified in the test landmark configuration.
+   - Set up ArUco markers (DICT_4X4_100) in your environment at the coordinates specified in the test landmark data.
   
 
     <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
@@ -106,7 +106,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
    | `reset_interval` | Automatic pose reset interval | `5.0`, `10.0`, `30.0` |
 
    - To execute the tests on the simulator platform, change the first line of `robotLocalizationTestConfiguration.ini` file in the config folder to "`platform simulator`". 
-   - Ensure the landmark configuration matches your simulation environment.
+   - Ensure the landmark data matches your simulation environment.
   
 
     <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
@@ -171,7 +171,7 @@ The results of the test is logged in the `~/workspace/pepper_rob_ws/src/unit_tes
 ```
 Robot Localization Test Report: robot
 ====================================
-Date: 2025-07-15 14:03:22
+Date: 2025-06-23 14:03:22
 
 Test A: Communication Functionality
 	Input Data Processing
@@ -186,10 +186,10 @@ Test A: Communication Functionality
 
 Test B: Computation Functionality  
 	Triangulation Algorithm
-		Position Accuracy        : PASSED (±0.15m)
+		Position Accuracy        : PASSED (±0.2m)
 		Orientation Accuracy     : PASSED (±4.2°)
 	Trilateration Algorithm  
-		Position Accuracy        : PASSED (±0.35m)
+		Position Accuracy        : PASSED (±0.4m)
 		Orientation Accuracy     : PASSED (±4.8°)
 	Sensor Fusion
 		Odometry Integration     : PASSED
@@ -210,8 +210,8 @@ Test C: Configuration Functionality
 
 Performance Metrics:
 	Pose Publication Rate    : 8.5 Hz
-	Position Accuracy (RGB)  : ±0.15m
-	Position Accuracy (RGB-D): ±0.35m  
+	Position Accuracy (RGB)  : ±0.2m
+	Position Accuracy (RGB-D): ±0.4m  
 	Orientation Accuracy     : ±4.2°
 	Landmark Detection Rate  : 94%
 	System Latency          : 285ms
@@ -270,4 +270,4 @@ For issues or questions:
 Funded by African Engineering and Technology Network (Afretec)  
 Inclusive Digital Transformation Research Grant Programme
 
-Date:   2025-07-15
+Date:   2025-06-23

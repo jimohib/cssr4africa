@@ -42,9 +42,9 @@
 #include <algorithm>
 #include <numeric>
 #include <vector>
-#include <cssr_system/ResetPose.h>
-#include <cssr_system/SetPose.h>
-#include "robotLocalization/robotLocalizationInterface.h"
+#include <cssr_system/resetPose.h>
+#include <cssr_system/setPose.h>
+
 
 // Structure for 3D landmark representation
 struct Landmark3D {
@@ -125,8 +125,8 @@ private:
     void resetTimerCallback(const ros::TimerEvent& event);
 
     // Service callbacks
-    bool setPoseCallback(cssr_system::SetPose::Request& req, cssr_system::SetPose::Response& res);
-    bool resetPoseCallback(cssr_system::ResetPose::Request& req, cssr_system::ResetPose::Response& res);
+    bool setPoseCallback(cssr_system::setPose::Request& req, cssr_system::setPose::Response& res);
+    bool resetPoseCallback(cssr_system::resetPose::Request& req, cssr_system::resetPose::Response& res);
 
     // Absolute localization methods
     bool computeAbsolutePose();

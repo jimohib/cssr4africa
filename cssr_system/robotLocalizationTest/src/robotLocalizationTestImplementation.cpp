@@ -341,7 +341,7 @@ void RobotLocalizationNode::depthCallback(const sensor_msgs::Image::ConstPtr& ms
     }
 }
 
-bool RobotLocalizationNode::setPoseCallback(cssr_system::SetPose::Request& req, cssr_system::SetPose::Response& res) {
+bool RobotLocalizationNode::setPoseCallback(cssr_system::setPose::Request& req, cssr_system::setPose::Response& res) {
     initial_robot_x = req.x;
     initial_robot_y = req.y;
     initial_robot_theta = angles::from_degrees(req.theta);
@@ -359,7 +359,7 @@ bool RobotLocalizationNode::setPoseCallback(cssr_system::SetPose::Request& req, 
     return true;
 }
 
-bool RobotLocalizationNode::resetPoseCallback(cssr_system::ResetPose::Request& req, cssr_system::ResetPose::Response& res) {
+bool RobotLocalizationNode::resetPoseCallback(cssr_system::resetPose::Request& req, cssr_system::resetPose::Response& res) {
     if (computeAbsolutePose()) {
         res.success = true;
         ROS_INFO("Pose reset successfully");

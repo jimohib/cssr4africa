@@ -48,8 +48,8 @@ add_service_files(
   DIRECTORY
   robotLocalization/srv
   FILES
-  ResetPose.srv
-  SetPose.srv
+  resetPose.srv
+  setPose.srv
   
 )
 
