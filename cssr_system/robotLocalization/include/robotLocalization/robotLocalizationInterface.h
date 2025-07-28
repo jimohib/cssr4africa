@@ -46,7 +46,6 @@
 #include <deque>
 #include <cssr_system/ResetPose.h>
 #include <cssr_system/SetPose.h>
-#include "robotLocalization/robotLocalizationInterface.h"
 
 // Structure for 3D landmark representation
 struct Landmark3D {
