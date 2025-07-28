@@ -33,7 +33,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
       ```bash 
          cd .. && source devel/setup.bash && catkin_make
        ```
-       
+
 3. **Install ArUco Library Package (ROS Noetic)**
      ```bash
         sudo apt update
@@ -69,30 +69,28 @@ Accompanying this code is the deliverable report that provides a detailed explan
       "x": 2.0,
       "y": 5.4,
       "z": 0.71
-    },]
+    }]
    ```
 
    **Camera Calibration** (`config/camera_info.json`):
    Default calibration if camera intrinsic is not retrieved automatically from camera.
    ```json
-      {
    "camera_info": {
       "fx": 911.6033325195312,   # Focal length X
       "fy": 910.8851318359375,   # Focal length Y
       "cx": 655.0755615234375,   # Principal point X
       "cy": 363.9165954589844    # Principal point Y
    }
-   }
    ```
-   To retrieve and update these values:
-    - Launch the realsense camera
-       ```bash
-          roslaunch realsense2_camera rs_camera.launch
-        ```
-    - Echo the camera info topic
-       ```bash
-          rostopic echo /camera/color/camera_info
-        ```
+    To retrieve and update these values:
+      - Launch the realsense camera
+        ```bash
+            roslaunch realsense2_camera rs_camera.launch
+          ```
+      - Echo the camera info topic and retrieve values
+        ```bash
+            rostopic echo /camera/color/camera_info
+          ```
 
 5. **Set up ArUco Markers:**
    

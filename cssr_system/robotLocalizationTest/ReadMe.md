@@ -6,7 +6,7 @@
   <img src="CSSR4AfricaLogo.svg" alt="CSSR4Africa Logo" style="width:50%; height:auto;">
 </div>
 
-This module provides unit tests for the `robotLocalization` node within the CSSR4Africa project (`cssr_system` package). The unit tests validate the communication, computation, and configuration functionality of the component across three different testing environments: physical robot, simulator, and test harness with controlled data. The results are logged in the file `~/workspace/pepper_rob_ws/src/unit_tests/robotLocalizationTest/test_data/robotLocalizationTestOutput.dat` for the physical robot and `~/workspace/pepper_sim_ws/src/unit_tests/robotLocalizationTest/test_data/robotLocalizationTestOutput.dat` for the simulator robot.
+This module provides unit tests for the `robotLocalization` node within the CSSR4Africa project (`cssr_system` package). The unit tests validate the communication, computation, and configuration functionality of the component across three different testing environments: physical robot, simulator, and test harness with controlled data. The results are logged in the file `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/test_data/robotLocalizationTestOutput.dat` for the physical robot and `~/workspace/pepper_sim_ws/src/cssr4africa/unit_tests/robotLocalizationTest/test_data/robotLocalizationTestOutput.dat` for the simulator robot.
 
 # Documentation
 Accompanying this code is the deliverable report that provides a detailed explanation of this node and its software. The deliverable report can be found in [D4.2.4 Robot Localization](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf).
@@ -38,7 +38,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
         sudo apt install ros-noetic-aruco ros-noetic-aruco-msgs ros-noetic-aruco-ros
       ```
 
-3. **Update Configuration File:**
+4. **Update Configuration File:**
    
    Navigate to `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/config/robotLocalizationTestConfiguration.ini` and `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/launch/*.launch`  and update the configuration according to the key-value pairs below:
 
@@ -59,7 +59,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
       <span style="color: #cccccc;">If you want to modify other configuration values, please refer to the <a href="https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf" style="color: #66b3ff;">D4.2.4 Robot Localization</a>. Otherwise, the preferred values are the ones already set in the `robotLocalizationTestConfiguration.ini` file.</span>
   </div>
 
-4. **Run the `robotLocalizationTest` from the`unit_tests`  package**. 
+5. **Run the `robotLocalizationTest` from the`unit_tests`  package**. 
 
     Follow below steps, run in different terminals.
     -  Source the workspace in first terminal:
@@ -85,7 +85,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
           cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationTestLaunchHarness.launch
         ```
 
-## Simulator Robot
+## Simulator Robot (Currently not functional for this node)
 ### Steps
 1. **Install the required software components:**
 
