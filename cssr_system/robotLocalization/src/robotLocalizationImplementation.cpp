@@ -1,4 +1,4 @@
-/* robotLocalizationImplementation.cpp    function definitions and implementation
+/* robotLocalizationImplementation.cpp    Function definitions and implementation
 *
 * Author: Ibrahim Olaide Jimoh, Carnegie Mellon University Africa
 * Email: ioj@andrew.cmu.edu

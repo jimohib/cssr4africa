@@ -1,4 +1,4 @@
-/* robotLocalizationInterface.h
+/* robotLocalizationInterface.h      Function, class, and variable declarations
 *
 * Author: Ibrahim Olaide Jimoh, Carnegie Mellon University Africa
 * Email: ioj@andrew.cmu.edu

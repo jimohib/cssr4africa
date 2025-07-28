@@ -47,7 +47,7 @@
           
     <!-- Spawn ArUco markers in simulation -->
     <include file="$(find cssr_system)/launch/spawn_aruco_markers.launch">
-        <arg name="marker_config" value="$(find cssr_system)/robotLocalizationTest/config/test_landmarks.yaml" />
+        <arg name="marker_config" value="$(find cssr_system)/robotLocalizationTest/data/test_landmarks.json" />
     </include>
 
     <!-- Launch robotLocalization component under test -->
@@ -60,7 +60,7 @@
         <param name="head_yaw_joint_name" value="HeadYaw" />
         <param name="reset_interval" value="10.0" />
         <param name="absolute_pose_timeout" value="60.0" />
-        <param name="config_file" value="$(find cssr_system)/robotLocalizationTest/config/test_landmarks.yaml" />
+        <param name="config_file" value="$(find cssr_system)/robotLocalizationTest/data/test_landmarks.json" />
         <param name="topics_file" value="$(find cssr_system)/robotLocalizationTest/data/simulatorTopics.dat" />
         <param name="camera_info_file" value="$(find cssr_system)/robotLocalizationTest/config/test_camera_info.yaml" />
         <param name="camera_info_timeout" value="5.0" />

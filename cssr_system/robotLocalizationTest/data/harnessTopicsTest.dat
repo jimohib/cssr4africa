@@ -1,0 +1,5 @@
+RGBRealSense        /camera/color/image_raw
+DepthRealSense      /camera/aligned_depth_to_color/image_raw
+Odometry            /naoqi_driver/odom
+IMU                 /naoqi_driver/imu/base
+HeadYaw             /joint_states

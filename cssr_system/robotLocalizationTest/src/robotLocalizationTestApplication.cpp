@@ -1,4 +1,4 @@
-/* robotLocalizationApplication.cpp  program initialization and main function execution
+/* robotLocalizationApplication.cpp  Program initialization and main function execution
  *
  * Author: Ibrahim Olaide Jimoh, Carnegie Mellon University Africa
  * Email: ioj@andrew.cmu.edu

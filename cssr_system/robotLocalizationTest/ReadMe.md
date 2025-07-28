@@ -9,7 +9,7 @@
 This module provides unit tests for the `robotLocalization` node within the CSSR4Africa project (`cssr_system` package). The unit tests validate the communication, computation, and configuration functionality of the component across three different testing environments: physical robot, simulator, and test harness with controlled data. The results are logged in the file `~/workspace/pepper_rob_ws/src/unit_tests/robotLocalizationTest/test_data/robotLocalizationTestOutput.dat` for the physical robot and `~/workspace/pepper_sim_ws/src/unit_tests/robotLocalizationTest/test_data/robotLocalizationTestOutput.dat` for the simulator robot.
 
 # Documentation
-Accompanying this code is the deliverable report that provides a detailed explanation of the code and how to run the tests. The deliverable report can be found in [D4.2.4 Robot Localization](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf).
+Accompanying this code is the deliverable report that provides a detailed explanation of this node and its software. The deliverable report can be found in [D4.2.4 Robot Localization](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf).
 
 # Run the Robot Localization Unit Test 
 ## Physical Robot 
@@ -31,10 +31,16 @@ Accompanying this code is the deliverable report that provides a detailed explan
       ```bash 
          cd .. && source devel/setup.bash && catkin_make
        ```
-       
+
+3. **Install ArUco Library Package (ROS Noetic)**
+     ```bash
+        sudo apt update
+        sudo apt install ros-noetic-aruco ros-noetic-aruco-msgs ros-noetic-aruco-ros
+      ```
+
 3. **Update Configuration File:**
    
-   Navigate to `~/workspace/pepper_rob_ws/src/unit_tests/robotLocalizationTest/config/robotLocalizationTestConfiguration.ini` and update the configuration according to the key-value pairs below:
+   Navigate to `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/config/robotLocalizationTestConfiguration.ini` and `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/launch/*.launch`  and update the configuration according to the key-value pairs below:
 
    | Parameter | Description | Values |
    |-----------|-------------|---------|
@@ -62,15 +68,21 @@ Accompanying this code is the deliverable report that provides a detailed explan
         ```
     -  Launch the robot:
         ```bash
-          roslaunch unit_tests robotLocalizationLaunchTestRobot.launch robot_ip:=<robot_ip> roscore_ip:=<roscore_ip> network_interface:=<network_interface>
+          roslaunch pepper_interface_tests actuatorTestLaunchRobot.launch robot_ip:=<robot_ip> roscore_ip:=<roscore_ip> network_interface:=<network_interface>
         ```
         <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
          <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
          <span style="color: #cccccc;">Ensure that the IP addresses <code>robot_ip</code> and <code>roscore_ip</code> and the network interface <code>network_interface</code> are correctly set based on your robot's configuration and your computer's network interface. </span>
         </div>
-    - Open a new terminal to launch the robotLocalizationTest (which launches the robotLocalization node and run tests on it). This creates drivers for camera topics and stubs for pose validation.
+    - Open a new terminal to launch the robotLocalizationTest (which launches the robotLocalization node and run tests on it).
+
+      Launch the test on Robot
         ```bash
-          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch unit_tests robotLocalizationLaunchTestHarness.launch
+          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationTestLaunchRobot.launch
+        ```
+      Launch the Harness Test. This creates drivers and stubs for pose validation.
+        ```bash
+          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationTestLaunchHarness.launch
         ```
 
 ## Simulator Robot
@@ -95,7 +107,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
        
 3. **Update Configuration File:**
    
-   Navigate to `~/workspace/pepper_sim_ws/src/unit_tests/robotLocalizationTest/config/robotLocalizationTestConfiguration.ini` and update the configuration according to the key-value pairs below:
+   Navigate to `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/config/robotLocalizationTestConfiguration.ini` and `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/launch/*.launch`  and update the configuration according to the key-value pairs below:
 
    | Parameter | Description | Values |
    |-----------|-------------|---------|
@@ -126,9 +138,15 @@ Accompanying this code is the deliverable report that provides a detailed explan
           roslaunch unit_tests robotLocalizationLaunchTestSimulator.launch
         ```
 
-    - Open a new terminal to launch the robotLocalizationTest (which launches the robotLocalization node and run tests on it). This creates drivers for camera topics and stubs for pose validation.
+    - Open a new terminal to launch the robotLocalizationTest (which launches the robotLocalization node and run tests on it).
+
+      Launch the test on Robot
         ```bash
-          cd $HOME/workspace/pepper_sim_ws && source devel/setup.bash && roslaunch unit_tests robotLocalizationLaunchTestHarness.launch
+          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationTestLaunchRobot.launch
+        ```
+      Launch the Harness Test. This creates drivers and stubs for pose validation.
+        ```bash
+          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationTestLaunchHarness.launch
         ```
 
 ## Tests Executed
@@ -138,7 +156,7 @@ The Test A contains the following:
   - `Test A_2`: Output Data Generation (pose publication, marker image publication)
 
 The robot is expected to perform the following:
-- Process RGB images at 5-30 Hz and detect ArUco markers
+- Process RGB and Depth images and detect ArUco markers
 - Handle depth images for trilateration when enabled
 - Publish pose estimates at 1-10 Hz
 - Generate annotated marker images showing detection results
@@ -166,7 +184,7 @@ The robot is expected to perform the following:
 - Show degraded performance with intentionally incorrect configurations
 
 ## Results
-The results of the test is logged in the `~/workspace/pepper_rob_ws/src/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat` file for the physical robot and `~/workspace/pepper_sim_ws/src/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat` file for the simulator robot. It contains the test ran, the input commands and the status of the test. Below is the output of the test when some sample configuration is set:
+The results of the test is expected to be logged in the `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat` file for the physical robot and `~/workspace/pepper_sim_ws/src/cssr4africa/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat` file for the simulator robot. It contains the test ran, the input commands and the status of the test. Below is an output of the test when some sample configuration is set:
 
 ```
 Robot Localization Test Report: robot
@@ -187,10 +205,10 @@ Test A: Communication Functionality
 Test B: Computation Functionality  
 	Triangulation Algorithm
 		Position Accuracy        : PASSED (±0.2m)
-		Orientation Accuracy     : PASSED (±4.2°)
+		Orientation Accuracy     : PASSED (±5.0°)
 	Trilateration Algorithm  
-		Position Accuracy        : PASSED (±0.4m)
-		Orientation Accuracy     : PASSED (±4.8°)
+		Position Accuracy        : PASSED (±0.5m)
+		Orientation Accuracy     : PASSED (±8.0°)
 	Sensor Fusion
 		Odometry Integration     : PASSED
 		Drift Correction        : PASSED
@@ -211,8 +229,8 @@ Test C: Configuration Functionality
 Performance Metrics:
 	Pose Publication Rate    : 8.5 Hz
 	Position Accuracy (RGB)  : ±0.2m
-	Position Accuracy (RGB-D): ±0.4m  
-	Orientation Accuracy     : ±4.2°
+	Position Accuracy (RGB-D): ±0.5m  
+	Orientation Accuracy     : ±5.0°
 	Landmark Detection Rate  : 94%
 	System Latency          : 285ms
 
@@ -224,7 +242,7 @@ Overall Test Result: PASSED
 ### Expected Performance Metrics
 - **Pose Publication Rate**: 1-10 Hz
 - **Position Accuracy**: ±0.2m (RGB), ±0.5m (RGB-D)
-- **Orientation Accuracy**: ±5° (RGB), ±5° (RGB-D)
+- **Orientation Accuracy**: ±5° (RGB), ±8° (RGB-D)
 - **Landmark Detection Rate**: >90% when 3+ markers visible
 - **System Latency**: <500ms from image to pose
 

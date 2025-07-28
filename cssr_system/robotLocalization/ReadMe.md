@@ -6,12 +6,12 @@
   <img src="CSSR4AfricaLogo.svg" alt="CSSR4Africa Logo" style="width:50%; height:auto;">
 </div>
 
-The `robotLocalization` ROS node provides accurate pose estimation capabilities for the Pepper humanoid robot using visual landmark detection and sensor fusion. This node combines ArUco marker detection from RGB and depth cameras with odometry data to deliver robust 6-DOF pose estimation in indoor environments.
+The `robotLocalization` ROS node provides accurate pose estimation capabilities for the Pepper humanoid robot using visual landmark detection and sensor fusion. This node combines ArUco marker detection from RGB and depth cameras with odometry data to deliver robust pose estimation in indoor environments.
 
 The package implements both triangulation (RGB-only) and trilateration (RGB-D) algorithms for absolute pose computation from detected landmarks, then maintains continuous positioning through odometry integration. The system supports periodic automatic pose correction and on-demand pose reset services for reliable localization in dynamic environments.
 
 # Documentation
-Accompanying this code is the deliverable report that provides a detailed explanation of the code and how to run the tests. The deliverable report can be found in [D4.2.4 Robot Localization](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf).
+Accompanying this code is the deliverable report that provides a detailed explanation of this node and its software. The deliverable report can be found in [D4.2.4 Robot Localization](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf).
 
 # Run the Robot Localization Node
 ## Physical Robot 
@@ -34,9 +34,15 @@ Accompanying this code is the deliverable report that provides a detailed explan
          cd .. && source devel/setup.bash && catkin_make
        ```
        
-3. **Update Data and Configuration Files:**
+3. **Install ArUco Library Package (ROS Noetic)**
+     ```bash
+        sudo apt update
+        sudo apt install ros-noetic-aruco ros-noetic-aruco-msgs ros-noetic-aruco-ros
+      ``` 
+
+4. **Update Data and Configuration Files:**
    
-   Navigate to the configuration files and update them according to your environment setup:
+   Navigate to the configuration files and update them according to your use case and environment setup:
 
    **Launch File Configuration** (`launch/robotLocalizationLaunchRobot.launch`):
    | Parameter | Description | Values | Default |
@@ -47,15 +53,16 @@ Accompanying this code is the deliverable report that provides a detailed explan
    | `head_yaw_joint_name` | Name of head yaw joint | String | `HeadYaw` |
    | `reset_interval` | Automatic pose reset interval (seconds) | Float | `10.0` |
    | `absolute_pose_timeout` | Timeout for pose validity (seconds) | Float | `300.0` |
+   | `camera_info_timeout` | Timeout for retrieving camera intrinsic from camera (seconds) | Float | `15.0` |
 
    **Landmark Data** (`data/landmarks.json`):
    ```json
    "landmarks": [
     {
       "id": 1,
-      "x": 5.0,
-      "y": 4.8,
-      "z": 0.71
+      "x": 5.0,   # X coordinate in meters
+      "y": 4.8,   # Y coordinate in meters
+      "z": 0.71   # Z coordinate in meters (ideal is camera height)
     },
     {
       "id": 2,
@@ -66,31 +73,36 @@ Accompanying this code is the deliverable report that provides a detailed explan
    ```
 
    **Camera Calibration** (`config/camera_info.json`):
+   Default calibration if camera intrinsic is not retrieved automatically from camera.
    ```json
       {
    "camera_info": {
-      "fx": 911.6033325195312,
-      "fy": 910.8851318359375,
-      "cx": 655.0755615234375,
-      "cy": 363.9165954589844
+      "fx": 911.6033325195312,   # Focal length X
+      "fy": 910.8851318359375,   # Focal length Y
+      "cx": 655.0755615234375,   # Principal point X
+      "cy": 363.9165954589844    # Principal point Y
    }
    }
    ```
+   To retrieve and update these values:
+    - Launch the realsense camera
+       ```bash
+          roslaunch realsense2_camera rs_camera.launch
+        ```
+    - Echo the camera info topic
+       ```bash
+          rostopic echo /camera/color/camera_info
+        ```
 
-    <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
-      <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
-      <span style="color: #cccccc;">If you need to update the configuration values, please refer to the <a href="https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf" style="color: #66b3ff;">D4.2.4 Robot Localization</a>. Otherwise, the recommended values are the ones already set in the configuration file.</span>
-  </div>
-
-4. **Set up ArUco Markers:**
+5. **Set up ArUco Markers:**
    
-   Place ArUco markers (DICT_4X4_100) in your environment at the coordinates specified in `landmarks.json`. Ensure markers are:
+   Place ArUco markers (DICT_4X4_100) in your physical environment at the coordinates specified in `landmarks.json`. Ensure markers are:
    - Clearly visible from robot operating areas
    - At appropriate heights (recommended: camera height ±0.5m)
-   - Well-distributed to avoid collinear configurations
+   - Well-distributed to avoid collinear configurations and acute angles between the markers
    - Properly lit and unobstructed
 
-5. **Run the `robotLocalization` from `cssr_system` package:**
+6. **Run the `robotLocalization` from `cssr_system` package:**
    
    Follow below steps, run in different terminals.
     -  Source the workspace in first terminal:
@@ -99,7 +111,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
         ```
     -  Launch the robot:
         ```bash
-          roslaunch cssr_system cssrSystemLaunchRobot.launch robot_ip:=<robot_ip> roscore_ip:=<roscore_ip> network_interface:=<network_interface>
+          roslaunch pepper_interface_tests actuatorTestLaunchRobot.launch robot_ip:=<robot_ip> roscore_ip:=<roscore_ip> network_interface:=<network_interface>
         ```
         <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
          <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
@@ -110,14 +122,14 @@ Accompanying this code is the deliverable report that provides a detailed explan
           cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationLaunchRobot.launch
         ```
         
-        **Or run the node standalone** (if camera is already launched):
+        **Or run the node standalone** (if camera is already launched and maintaining default configurations):
         ```bash
           cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && rosrun cssr_system robotLocalization
         ```
     
-      N.B: Running the `robotLocalization` node requires camera topics (`/camera/color/image_raw`, `/camera/depth/image_raw`, `/camera/color/camera_info`) and odometry topic (`/naoqi_driver/odom`) to be available from the robot or simulation environment.
+      N.B: Running the `robotLocalization` node requires camera topics (`/camera/color/image_raw`, `/camera/aligned_depth_to_color/image_raw`, `/camera/color/camera_info`) and odometry topic (`/naoqi_driver/odom`) to be available from the robot or simulation environment.
 
-## Simulator Robot
+## Simulator Robot (Currently not functional for this node)
 
 ### Steps
 1. **Install the required software components:**
@@ -140,7 +152,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
 
 3. **Update Configuration Files:**
    
-   Navigate to the configuration files located at `~/workspace/pepper_sim_ws/src/cssr4africa/robotLocalization/config/` and update the configuration according to your simulation environment setup.
+   Navigate to the configuration files located at `~/workspace/pepper_sim_ws/src/cssr4africa/cssr_system/robotLocalization/config/` and update the configuration according to your simulation environment setup.
 
    **Launch File Configuration** (`launch/robotLocalizationLaunchRobot.launch`):
    | Parameter | Description | Values | Default |
@@ -190,7 +202,7 @@ rosservice list | grep /robotLocalization
 **Set the Initial Robot Pose**
 Use the set pose service to initialize or correct the robot's pose:
 ```sh
-rosservice call /robotLocalization/set_pose -- x y theta
+rosservice call /robotLocalization/set_pose x y theta
 ```
 
 **Reset Pose Using Landmarks**
@@ -240,6 +252,7 @@ rostopic echo /robotLocalization/pose
 ```sh
 rosparam set /robotLocalization/verbose true
 ```
+or in the launch configuration file
 
 **Check Node Status:**
 ```sh
@@ -264,7 +277,7 @@ rostopic hz /camera/color/image_raw
 2. **Inaccurate pose estimation:**
    - Calibrate camera intrinsics properly
    - Check for marker ID conflicts
-   - Verify landmark placement accuracy
+   - Verify landmark placement accuracy (avoid collinear markers and acute angles)
 
 3. **High pose drift:**
    - Reduce reset_interval parameter
