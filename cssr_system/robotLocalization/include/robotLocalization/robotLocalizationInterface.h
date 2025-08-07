@@ -172,8 +172,8 @@ private:
     void headScanTimerCallback(const ros::TimerEvent& event);
 
     // Service callbacks
-    bool setPoseCallback(cssr_system::SetPose::Request& req, cssr_system::SetPose::Response& res);
-    bool resetPoseCallback(cssr_system::ResetPose::Request& req, cssr_system::ResetPose::Response& res);
+    bool setPoseCallback(cssr_system::setPose::Request& req, cssr_system::setPose::Response& res);
+    bool resetPoseCallback(cssr_system::resetPose::Request& req, cssr_system::resetPose::Response& res);
 
     // Head scanning methods
     void startHeadScanForMarkers(LocalizationTrigger trigger);
