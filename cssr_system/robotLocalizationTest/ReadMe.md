@@ -89,7 +89,32 @@ Accompanying this code is the deliverable report that provides a detailed explan
 ### Steps
 1. **Install the required software components:**
 
-  Install the required software components to instantiate and set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf). 
+  Install the required software components to instantiate and set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf).
+
+  **Install Intel RealSense SDK and ROS Wrapper (For the Intel realsense camera):**
+   
+   - Add Intel server to the list of repositories:
+      ```bash
+      sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE || sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE
+      sudo add-apt-repository "deb https://librealsense.intel.com/Debian/apt-repo $(lsb_release -cs) main" -u
+      ```
+   
+   - Install the Intel RealSense SDK 2.0 libraries and utilities:
+      ```bash
+      sudo apt update
+      sudo apt install librealsense2-dkms librealsense2-utils librealsense2-dev librealsense2-dbg librealsense2-udev-rules
+      ```
+   
+   - Install the ROS wrapper for RealSense cameras:
+      ```bash
+      # For ROS Noetic:
+      sudo apt install ros-noetic-realsense2-camera ros-noetic-realsense2-description
+      ```
+   
+   - Verify the installation by connecting your RealSense camera and running:
+      ```bash
+      realsense-viewer
+      ```   
 
 2. **Clone and build the project (if not already cloned)**:
    - Move to the source directory of the workspace

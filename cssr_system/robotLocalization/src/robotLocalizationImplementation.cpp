@@ -1,4 +1,4 @@
-/* robotLocalizationImplementation.cpp    Function definitions and implementation
+/* robotLocalizationImplementation.cpp
 *
 * Author: Ibrahim Olaide Jimoh, Carnegie Mellon University Africa
 * Email: ioj@andrew.cmu.edu
@@ -17,6 +17,23 @@
 
 #include "robotLocalization/robotLocalizationInterface.h"
 
+// Initialize head scan positions
+void RobotLocalizationNode::initializeHeadScanPositions() {
+    scan_positions_.clear();
+    
+    for (double yaw = -head_scan_range_; yaw <= head_scan_range_; yaw += head_scan_step_) {
+        scan_positions_.push_back(yaw);
+    }
+    
+    // Ensure center position is included
+    if (std::find(scan_positions_.begin(), scan_positions_.end(), 0.0) == scan_positions_.end()) {
+        scan_positions_.push_back(0.0);
+        std::sort(scan_positions_.begin(), scan_positions_.end());
+    }
+    
+    ROS_INFO("Initialized %zu head scan positions from %.1f to %.1f degrees", 
+             scan_positions_.size(), -head_scan_range_ * 180.0/M_PI, head_scan_range_ * 180.0/M_PI);
+}
 
 void RobotLocalizationNode::initializePoseAdjustments() {
     ros::Rate rate(10);
@@ -24,9 +41,25 @@ void RobotLocalizationNode::initializePoseAdjustments() {
         ros::spinOnce();
         rate.sleep();
     }
+    
     adjustment_x_ = initial_robot_x - odom_x_;
     adjustment_y_ = initial_robot_y - odom_y_;
     adjustment_theta_ = angles::normalize_angle(initial_robot_theta - odom_theta_);
+    
+    // Perform immediate startup localization
+    if (perform_startup_localization_) {
+        ROS_INFO("Performing startup localization...");
+        publishLocalizationStatus("Startup localization initiated", true);
+        
+        ros::Duration(2.0).sleep(); // Allow camera to stabilize
+        
+        if (performLocalization(LocalizationTrigger::STARTUP)) {
+            ROS_INFO("Startup localization successful");
+            initial_localization_complete_ = true;
+        } else {
+            ROS_WARN("Startup localization failed, will retry with interval timer");
+        }
+    }
 }
 
 void RobotLocalizationNode::loadTopicNames() {
@@ -240,21 +273,34 @@ void RobotLocalizationNode::imuCallback(const sensor_msgs::Imu::ConstPtr& msg) {
 }
 
 void RobotLocalizationNode::jointCallback(const sensor_msgs::JointState::ConstPtr& msg) {
-    bool found = false;
+    bool found_yaw = false, found_pitch = false;
+    
     for (size_t i = 0; i < msg->name.size(); ++i) {
-        if (msg->name[i] == head_yaw_joint_name_) {
+        if (msg->name[i] == "HeadYaw") {
+            double old_head_yaw = head_yaw_;
             head_yaw_ = msg->position[i];
-            found = true;
-            if (verbose_) {
-                ROS_INFO("Head yaw update: %.3f radians", head_yaw_);
+            found_yaw = true;
+            
+            if (verbose_ && std::abs(head_yaw_ - old_head_yaw) > 0.01) {
+                ROS_INFO("Head yaw update: %.3f radians (%.1f degrees)", 
+                         head_yaw_, head_yaw_ * 180.0/M_PI);
             }
-            break;
+        }
+        else if (msg->name[i] == "HeadPitch") {
+            head_pitch_ = msg->position[i];
+            found_pitch = true;
         }
     }
-    if (!found && verbose_) {
-        std::string names;
-        for (const auto& name : msg->name) names += name + ", ";
-        ROS_WARN("Head yaw joint '%s' not found in joint_states: %s", head_yaw_joint_name_.c_str(), names.c_str());
+    
+    if (!found_yaw || !found_pitch) {
+        static bool warning_printed = false;
+        if (!warning_printed) {
+            std::string names;
+            for (const auto& name : msg->name) names += name + ", ";
+            ROS_WARN("Head joints not found in joint_states. Looking for: HeadYaw, HeadPitch. Available: %s", 
+                     names.c_str());
+            warning_printed = true;
+        }
     }
 }
 
@@ -280,7 +326,7 @@ void RobotLocalizationNode::depthCallback(const sensor_msgs::Image::ConstPtr& ms
     }
 }
 
-bool RobotLocalizationNode::setPoseCallback(cssr_system::setPose::Request& req, cssr_system::setPose::Response& res) {
+bool RobotLocalizationNode::setPoseCallback(cssr_system::SetPose::Request& req, cssr_system::SetPose::Response& res) {
     initial_robot_x = req.x;
     initial_robot_y = req.y;
     initial_robot_theta = angles::from_degrees(req.theta);
@@ -298,19 +344,50 @@ bool RobotLocalizationNode::setPoseCallback(cssr_system::setPose::Request& req, 
     return true;
 }
 
-bool RobotLocalizationNode::resetPoseCallback(cssr_system::resetPose::Request& req, cssr_system::resetPose::Response& res) {
-    if (computeAbsolutePose()) {
-        res.success = true;
-        ROS_INFO("Pose reset successfully");
+bool RobotLocalizationNode::resetPoseCallback(cssr_system::ResetPose::Request& req, cssr_system::ResetPose::Response& res) {
+    ROS_INFO("Pose reset service called");
+    
+    bool success = performLocalization(LocalizationTrigger::SERVICE_REQUEST);
+    res.success = success;
+    
+    if (success) {
+        ROS_INFO("Pose reset successful");
     } else {
-        res.success = false;
         ROS_WARN("Failed to reset pose");
     }
+    
     return true;
 }
 
 void RobotLocalizationNode::resetTimerCallback(const ros::TimerEvent& event) {
-    computeAbsolutePose();
+    if (!use_interval_timer_) return;
+    
+    // Skip if startup localization hasn't completed yet
+    if (!initial_localization_complete_ && perform_startup_localization_) return;
+    
+    performLocalization(LocalizationTrigger::INTERVAL_TIMER);
+}
+
+bool RobotLocalizationNode::performLocalization(LocalizationTrigger trigger) {
+    logLocalizationAttempt(trigger, false);
+    
+    // Try standard localization first
+    if (computeAbsolutePose()) {
+        logLocalizationAttempt(trigger, true);
+        return true;
+    }
+    
+    // If failed and head scanning enabled, try scanning
+    if (enable_head_scanning_ && use_head_yaw_) {
+        ROS_INFO("Standard localization failed, initiating head scanning");
+        publishLocalizationStatus("Standard localization failed, starting head scan", false);
+        startHeadScanForMarkers(trigger);
+        return true; // Will complete asynchronously
+    }
+    
+    ROS_WARN("Localization failed");
+    publishLocalizationStatus("Localization failed", false);
+    return false;
 }
 
 bool RobotLocalizationNode::computeAbsolutePose() {
@@ -923,6 +1000,336 @@ double RobotLocalizationNode::computeYaw(const std::pair<double, double>& marker
     ROS_INFO("Theta=%.3f degrees (positive: %.3f degrees)", calibrated_yaw * 180.0 / M_PI, yaw_positive);
     
     return calibrated_yaw;
+}
+
+// Start head scanning for markers
+void RobotLocalizationNode::startHeadScanForMarkers(LocalizationTrigger trigger) {
+    if (head_scan_state_ != HeadScanState::IDLE) {
+        ROS_WARN("Head scan already in progress");
+        return;
+    }
+    
+    ROS_INFO("Starting head scan for markers");
+    
+    original_head_yaw_ = head_yaw_;
+    head_scan_state_ = HeadScanState::SCANNING_FOR_MARKERS;
+    current_scan_index_ = 0;
+    scan_start_time_ = ros::Time::now();
+    clearAccumulatedMarkers();
+    
+    head_scan_timer_ = nh_.createTimer(ros::Duration(0.1), &RobotLocalizationNode::headScanTimerCallback, this);
+    publishLocalizationStatus("Head scanning initiated", true);
+}
+
+// Head scan timer callback
+void RobotLocalizationNode::headScanTimerCallback(const ros::TimerEvent& event) {
+    if (ros::Time::now() - scan_start_time_ > ros::Duration(head_scan_timeout_)) {
+        ROS_WARN("Head scan timeout");
+        completeScanAndLocalize();
+        return;
+    }
+    
+    switch (head_scan_state_) {
+        case HeadScanState::SCANNING_FOR_MARKERS:
+            executeHeadScan();
+            break;
+        case HeadScanState::RETURNING_TO_CENTER:
+            if (isHeadMovementComplete()) {
+                head_scan_state_ = HeadScanState::SCAN_COMPLETE;
+                completeScanAndLocalize();
+            }
+            break;
+        case HeadScanState::SCAN_COMPLETE:
+            head_scan_timer_.stop();
+            head_scan_state_ = HeadScanState::IDLE;
+            break;
+    }
+}
+
+// Execute head scanning
+void RobotLocalizationNode::executeHeadScan() {
+    if (current_scan_index_ >= scan_positions_.size()) {
+        ROS_INFO("All scan positions completed, returning to center");
+        returnHeadToCenter();
+        return;
+    }
+    
+    double target_yaw = scan_positions_[current_scan_index_];
+    
+    ROS_INFO("Scanning position %zu/%zu: %.1f degrees", 
+             current_scan_index_ + 1, scan_positions_.size(), target_yaw * 180.0/M_PI);
+    
+    // Move head to position
+    moveHeadToPosition(target_yaw);
+    
+    // Wait longer for Pepper's head movement (5 seconds)
+    ros::Duration(5.0).sleep();
+    
+    // Check movement or timeout
+    static ros::Time position_start_time = ros::Time::now();
+    static size_t last_scan_index = current_scan_index_;
+    
+    if (last_scan_index != current_scan_index_) {
+        position_start_time = ros::Time::now();
+        last_scan_index = current_scan_index_;
+    }
+    
+    bool movement_complete = isHeadMovementComplete();
+    bool position_timeout = (ros::Time::now() - position_start_time).toSec() > 10.0; // 10 second timeout
+    
+    if (movement_complete || position_timeout) {
+        if (position_timeout) {
+            ROS_WARN("Head movement timeout for position %.1f degrees, continuing anyway", 
+                     target_yaw * 180.0/M_PI);
+        } else {
+            ROS_INFO("Head movement to %.1f degrees completed", target_yaw * 180.0/M_PI);
+        }
+        
+        processCurrentScanPosition();
+        current_scan_index_++;
+        
+        // Longer delay between positions for Pepper
+        ros::Duration(2.0).sleep();
+    }
+}
+
+// Move head to position
+void RobotLocalizationNode::moveHeadToPosition(double yaw_angle) {
+    target_head_yaw_ = yaw_angle;
+    head_movement_complete_ = false;
+    
+    // Create trajectory message with both HeadYaw and HeadPitch
+    trajectory_msgs::JointTrajectory traj;
+    traj.header.stamp = ros::Time::now();
+    traj.joint_names.push_back("HeadYaw");
+    traj.joint_names.push_back("HeadPitch");
+    
+    trajectory_msgs::JointTrajectoryPoint point;
+    point.positions.push_back(yaw_angle);        // HeadYaw position
+    point.positions.push_back(head_pitch_);      // HeadPitch position (keep current)
+    point.velocities.push_back(0.0);             // HeadYaw velocity
+    point.velocities.push_back(0.0);             // HeadPitch velocity
+    point.time_from_start = ros::Duration(4.0);  // 4 seconds to reach position
+    
+    traj.points.push_back(point);
+    
+    // Check if publisher has subscribers
+    if (head_traj_pub_.getNumSubscribers() > 0) {
+        head_traj_pub_.publish(traj);
+        ROS_INFO("Published trajectory to move head to yaw=%.1f degrees, pitch=%.1f degrees", 
+                 yaw_angle * 180.0/M_PI, head_pitch_ * 180.0/M_PI);
+    } else {
+        ROS_WARN("No subscribers to head trajectory topic: %s", head_traj_pub_.getTopic().c_str());
+    }
+    
+    // Give time for movement to start
+    ros::Duration(1.0).sleep();
+}
+
+// Check if head movement complete
+bool RobotLocalizationNode::isHeadMovementComplete() {
+    double yaw_error = std::abs(head_yaw_ - target_head_yaw_);
+    
+    // More lenient tolerance for Pepper (about 15 degrees)
+    bool complete = yaw_error < 0.26; 
+    
+    if (verbose_) {
+        ROS_INFO("Head movement check: current=%.3f (%.1f°), target=%.3f (%.1f°), error=%.3f (%.1f°), complete=%s", 
+                 head_yaw_, head_yaw_ * 180.0/M_PI,
+                 target_head_yaw_, target_head_yaw_ * 180.0/M_PI,
+                 yaw_error, yaw_error * 180.0/M_PI,
+                 complete ? "YES" : "NO");
+    }
+    
+    return complete;
+}
+
+// Process current scan position - KEY METHOD for marker accumulation
+void RobotLocalizationNode::processCurrentScanPosition() {
+    ros::Duration(0.3).sleep(); // Let head settle
+    
+    detectAndAccumulateMarkers(); // Accumulate markers at this position
+    
+    if (hasMinimumMarkersForLocalization()) {
+        ROS_INFO("Found sufficient markers (%zu unique), completing scan early", 
+                 unique_detected_markers_.size());
+        completeScanAndLocalize();
+        return;
+    }
+    
+    if (verbose_) {
+        ROS_INFO("Head position %.1f degrees: %zu unique markers total", 
+                 head_yaw_ * 180.0/M_PI, unique_detected_markers_.size());
+    }
+}
+
+// KEY METHOD: Detect and accumulate markers across head positions
+void RobotLocalizationNode::detectAndAccumulateMarkers() {
+    if (latest_image_.empty()) return;
+    
+    std::vector<int> marker_ids;
+    std::vector<std::vector<cv::Point2f>> marker_corners;
+    cv::Ptr<cv::aruco::Dictionary> dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_100);
+    cv::aruco::detectMarkers(latest_image_, dictionary, marker_corners, marker_ids);
+    
+    for (size_t i = 0; i < marker_ids.size(); ++i) {
+        int id = marker_ids[i];
+        
+        if (projected_landmarks_.find(id) != projected_landmarks_.end()) {
+            auto& corners = marker_corners[i];
+            cv::Point2f center(
+                (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4.0f,
+                (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4.0f
+            );
+            
+            MarkerDetection detection = createMarkerDetection(id, center, corners);
+            accumulated_markers_.push_back(detection);
+            unique_detected_markers_.insert(id);
+            
+            if (verbose_) {
+                ROS_INFO("Accumulated marker %d at head yaw %.1f degrees (total unique: %zu)", 
+                         id, head_yaw_ * 180.0/M_PI, unique_detected_markers_.size());
+            }
+        }
+    }
+
+    ROS_INFO("Current scan position: detected %zu markers, %zu unique total", marker_ids.size(), unique_detected_markers_.size());
+}
+
+// Check if minimum markers for localization
+bool RobotLocalizationNode::hasMinimumMarkersForLocalization() {
+    return unique_detected_markers_.size() >= 3;
+}
+
+// Select best markers for localization
+std::vector<MarkerDetection> RobotLocalizationNode::selectBestMarkersForLocalization() {
+    std::vector<MarkerDetection> selected_markers;
+    
+    if (accumulated_markers_.size() < 3) return selected_markers;
+    
+    // Group by marker ID
+    std::map<int, std::vector<MarkerDetection>> markers_by_id;
+    for (const auto& detection : accumulated_markers_) {
+        markers_by_id[detection.marker_id].push_back(detection);
+    }
+    
+    // Select best detection for each marker (closest to center)
+    std::vector<MarkerDetection> best_detections;
+    for (const auto& pair : markers_by_id) {
+        const auto& detections = pair.second;
+        auto best_it = std::min_element(detections.begin(), detections.end(),
+            [](const MarkerDetection& a, const MarkerDetection& b) {
+                return std::abs(a.head_yaw_angle) < std::abs(b.head_yaw_angle);
+            });
+        best_detections.push_back(*best_it);
+    }
+    
+    // Sort by marker ID and return first 3
+    std::sort(best_detections.begin(), best_detections.end(),
+        [](const MarkerDetection& a, const MarkerDetection& b) {
+            return a.marker_id < b.marker_id;
+        });
+    
+    size_t num_markers = std::min(best_detections.size(), size_t(3));
+    selected_markers.assign(best_detections.begin(), best_detections.begin() + num_markers);
+    
+    return selected_markers;
+}
+
+// Complete scan and localize
+void RobotLocalizationNode::completeScanAndLocalize() {
+    head_scan_timer_.stop();
+    
+    ROS_INFO("Head scan complete. Found %zu unique markers", unique_detected_markers_.size());
+    
+    if (hasMinimumMarkersForLocalization()) {
+        auto selected_markers = selectBestMarkersForLocalization();
+        
+        ROS_INFO("Selected %zu markers for localization:", selected_markers.size());
+        for (const auto& marker : selected_markers) {
+            ROS_INFO("  Marker %d at head yaw %.1f degrees", 
+                     marker.marker_id, marker.head_yaw_angle * 180.0/M_PI);
+        }
+        
+        if (computeAbsolutePoseWithAccumulatedMarkers()) {
+            ROS_INFO("Localization successful using accumulated markers");
+            publishLocalizationStatus("Localization successful with head scanning", true);
+        } else {
+            ROS_WARN("Localization failed with accumulated markers");
+            publishLocalizationStatus("Localization failed after head scanning", false);
+        }
+    } else {
+        ROS_WARN("Insufficient markers found (found: %zu, need: 3)", unique_detected_markers_.size());
+        publishLocalizationStatus("Insufficient markers found during scan", false);
+    }
+    
+    clearAccumulatedMarkers();
+    returnHeadToCenter();
+}
+
+// Return head to center
+void RobotLocalizationNode::returnHeadToCenter() {
+    head_scan_state_ = HeadScanState::RETURNING_TO_CENTER;
+    moveHeadToPosition(0.0);
+    
+    if (verbose_) {
+        ROS_INFO("Returning head to center position");
+    }
+}
+
+// Clear accumulated markers
+void RobotLocalizationNode::clearAccumulatedMarkers() {
+    accumulated_markers_.clear();
+    unique_detected_markers_.clear();
+}
+
+// Create marker detection
+MarkerDetection RobotLocalizationNode::createMarkerDetection(int id, const cv::Point2f& center, const std::vector<cv::Point2f>& corners) {
+    MarkerDetection detection;
+    detection.marker_id = id;
+    detection.head_yaw_angle = head_yaw_;
+    detection.center = center;
+    detection.corners = corners;
+    detection.detection_time = ros::Time::now();
+    return detection;
+}
+
+// Compute absolute pose with accumulated markers
+bool RobotLocalizationNode::computeAbsolutePoseWithAccumulatedMarkers() {
+    auto selected_markers = selectBestMarkersForLocalization();
+    
+    if (selected_markers.size() < 3) {
+        ROS_WARN("Insufficient markers for localization: %zu", selected_markers.size());
+        return false;
+    }
+    
+    // For now, use the existing computeAbsolutePose method
+    // In a full implementation, you'd modify this to use the specific accumulated markers
+    // and account for their head positions during detection
+    
+    return computeAbsolutePose();
+}
+
+// Publish localization status
+void RobotLocalizationNode::publishLocalizationStatus(const std::string& status, bool success) {
+    std_msgs::String msg;
+    msg.data = status;
+    localization_status_pub_.publish(msg);
+    
+    ROS_INFO("Localization Status: %s (Success: %s)", status.c_str(), success ? "YES" : "NO");
+}
+
+// Log localization attempts
+void RobotLocalizationNode::logLocalizationAttempt(LocalizationTrigger trigger, bool success) {
+    std::string trigger_str;
+    switch (trigger) {
+        case LocalizationTrigger::STARTUP: trigger_str = "STARTUP"; break;
+        case LocalizationTrigger::INTERVAL_TIMER: trigger_str = "INTERVAL_TIMER"; break;
+        case LocalizationTrigger::SERVICE_REQUEST: trigger_str = "SERVICE_REQUEST"; break;
+    }
+    
+    ROS_INFO("Localization attempt - Trigger: %s, Success: %s", 
+             trigger_str.c_str(), success ? "YES" : "NO");
 }
 
 int RobotLocalizationNode::circle_centre(double x1, double y1, double x2, double y2, double alpha, double *xc1, double *yc1, double *xc2, double *yc2, double *r) {

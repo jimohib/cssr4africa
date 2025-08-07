@@ -1,18 +1,16 @@
-/* robotLocalizationInterface.h      Function, class, and variable declarations
+/* robotLocalizationInterface.h
 *
 * Author: Ibrahim Olaide Jimoh, Carnegie Mellon University Africa
 * Email: ioj@andrew.cmu.edu
 * Date: June 25, 2025
 * Version: v1.0
 *
+* Key Features:
+* 1. Immediate startup localization (no 30s delay)
+* 2. Active head scanning with marker accumulation across positions
+* 3. Service-based localization (call from behavior tree)
+*
 * Copyright (C) 2025 CSSR4Africa Consortium
-*
-* This project is funded by the African Engineering and Technology Network (Afretec)
-* Inclusive Digital Transformation Research Grant Programme.
-*
-* Website: www.cssr4africa.org
-*
-* This program comes with ABSOLUTELY NO WARRANTY.
 */
 
 #ifndef ROBOT_LOCALIZATION_INTERFACE_H
@@ -26,6 +24,9 @@
 #include <sensor_msgs/CameraInfo.h>
 #include <geometry_msgs/Pose2D.h>
 #include <geometry_msgs/TransformStamped.h>
+#include <std_msgs/Float64.h>
+#include <std_msgs/String.h>
+#include <trajectory_msgs/JointTrajectory.h>
 #include <cv_bridge/cv_bridge.h>
 #include <angles/angles.h>
 #include <opencv2/opencv.hpp>
@@ -39,17 +40,42 @@
 #include <json/json.h>
 #include <fstream>
 #include <map>
+#include <set>
 #include <algorithm>
 #include <numeric>
 #include <vector>
+#include <deque>
 #include <cssr_system/resetPose.h>
 #include <cssr_system/setPose.h>
-
 
 // Structure for 3D landmark representation
 struct Landmark3D {
     int id;
     double x, y, z;
+};
+
+// Structure for marker detection with head position
+struct MarkerDetection {
+    int marker_id;
+    double head_yaw_angle;
+    cv::Point2f center;
+    std::vector<cv::Point2f> corners;
+    ros::Time detection_time;
+};
+
+// Enum for head scanning states
+enum class HeadScanState {
+    IDLE,
+    SCANNING_FOR_MARKERS,
+    RETURNING_TO_CENTER,
+    SCAN_COMPLETE
+};
+
+// Enum for localization triggers
+enum class LocalizationTrigger {
+    STARTUP,
+    INTERVAL_TIMER,
+    SERVICE_REQUEST
 };
 
 // Robot localization class
@@ -71,23 +97,29 @@ private:
     
     // Publishers
     ros::Publisher pose_pub_;
+    ros::Publisher head_traj_pub_;
+    ros::Publisher localization_status_pub_;
     image_transport::Publisher image_pub_;
     
     // Services
     ros::ServiceServer reset_srv_, setpose_srv_;
     
     // Timers
-    ros::Timer reset_timer_, camera_info_timer_;
+    ros::Timer reset_timer_, camera_info_timer_, head_scan_timer_;
 
     // Configuration parameters
     bool verbose_, use_depth_, use_head_yaw_, camera_info_received_;
+    bool enable_head_scanning_, use_interval_timer_, perform_startup_localization_;
     double reset_interval_, camera_info_timeout_, absolute_pose_timeout_;
+    double head_scan_range_, head_scan_step_, head_scan_speed_;
+    double head_scan_timeout_, marker_detection_threshold_;
     std::string landmark_file_, topics_file_, camera_info_file_;
     std::string head_yaw_joint_name_, map_frame_, odom_frame_;
     
     // Pose tracking variables
     geometry_msgs::Pose2D current_pose_, baseline_pose_, last_odom_pose_;
     ros::Time last_absolute_pose_time_;
+    bool initial_localization_complete_;
     
     // Landmark and topic management
     std::map<int, Landmark3D> landmarks3D_;
@@ -96,7 +128,7 @@ private:
     
     // Sensor data
     cv::Mat latest_image_, latest_depth_;
-    double head_yaw_;
+    double head_yaw_, head_pitch_, original_head_yaw_;
     double camera_height_;
     double fx_, fy_, cx_, cy_; // Camera intrinsics
     
@@ -108,11 +140,25 @@ private:
     double adjustment_x_, adjustment_y_, adjustment_theta_;
     double odom_x_, odom_y_, odom_theta_;
 
+    // Head scanning variables
+    HeadScanState head_scan_state_;
+    std::vector<double> scan_positions_;
+    size_t current_scan_index_;
+    ros::Time scan_start_time_;
+    
+    // Marker accumulation across head positions
+    std::vector<MarkerDetection> accumulated_markers_;
+    std::set<int> unique_detected_markers_;
+    
+    bool head_movement_complete_;
+    double target_head_yaw_;
+
     // Initialization methods
     void initializePoseAdjustments();
     void loadTopicNames();
     void loadLandmarks();
     void loadCameraInfoFromFile();
+    void initializeHeadScanPositions();
 
     // Callback methods
     void cameraInfoCallback(const sensor_msgs::CameraInfo::ConstPtr& msg);
@@ -123,14 +169,33 @@ private:
     void imageCallback(const sensor_msgs::Image::ConstPtr& msg);
     void depthCallback(const sensor_msgs::Image::ConstPtr& msg);
     void resetTimerCallback(const ros::TimerEvent& event);
+    void headScanTimerCallback(const ros::TimerEvent& event);
 
     // Service callbacks
-    bool setPoseCallback(cssr_system::setPose::Request& req, cssr_system::setPose::Response& res);
-    bool resetPoseCallback(cssr_system::resetPose::Request& req, cssr_system::resetPose::Response& res);
+    bool setPoseCallback(cssr_system::SetPose::Request& req, cssr_system::SetPose::Response& res);
+    bool resetPoseCallback(cssr_system::ResetPose::Request& req, cssr_system::ResetPose::Response& res);
 
-    // Absolute localization methods
+    // Head scanning methods
+    void startHeadScanForMarkers(LocalizationTrigger trigger);
+    void executeHeadScan();
+    void moveHeadToPosition(double yaw_angle);
+    void processCurrentScanPosition();
+    void completeScanAndLocalize();
+    void returnHeadToCenter();
+    bool isHeadMovementComplete();
+    
+    // Marker accumulation methods
+    void detectAndAccumulateMarkers();
+    void clearAccumulatedMarkers();
+    bool hasMinimumMarkersForLocalization();
+    std::vector<MarkerDetection> selectBestMarkersForLocalization();
+    MarkerDetection createMarkerDetection(int id, const cv::Point2f& center, const std::vector<cv::Point2f>& corners);
+
+    // Localization methods
+    bool performLocalization(LocalizationTrigger trigger);
     bool computeAbsolutePose();
     bool computeAbsolutePoseWithDepth();
+    bool computeAbsolutePoseWithAccumulatedMarkers();
     
     // Utility methods
     double computeAngle(const std::pair<double, double>& center1, const std::pair<double, double>& center2);
@@ -138,6 +203,12 @@ private:
     int circle_centre(double x1, double y1, double x2, double y2, double alpha, double *xc1, double *yc1, double *xc2, double *yc2, double *r);
     int circle_circle_intersection(double x0, double y0, double r0, double x1, double y1, double r1, double *xi, double *yi, double *xi_prime, double *yi_prime);
     void publishPose();
+    void publishLocalizationStatus(const std::string& status, bool success);
+    
+    // Helper methods
+    bool shouldPerformLocalization();
+    void logLocalizationAttempt(LocalizationTrigger trigger, bool success);
+    double normalizeHeadYaw(double yaw);
 };
 
-#endif // ROBOT_LOCALIZATION_H
+#endif // ROBOT_LOCALIZATION_INTERFACE_H
