@@ -127,58 +127,77 @@
 
 #include "robotLocalizationTest/robotLocalizationTestInterface.h"
 
-// Constructor implementation
+// Constructor
 RobotLocalizationNode::RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(), tf_listener_(tf_buffer_) {
-    // Print copyright message
+    
+   // Print copyright message
     printCopyrightMessage();
     
     // Record start time
     node_start_time_ = ros::Time::now();
     
-    // Load unit test parameter
-    nh_.param("unit_test_mode", unit_test_mode_, false);
-    
-    printStartupMessage("start-up");
+    // Print startup message
+    printStartupMessage("Start up");
 
-    // Load parameters
-    nh_.param("verbose", verbose_, false);
-    nh_.param("use_depth", use_depth_, false);
-    nh_.param("use_head_yaw", use_head_yaw_, false);
-    nh_.param("head_yaw_joint_name", head_yaw_joint_name_, std::string("HeadYaw"));
-    nh_.param("reset_interval", reset_interval_, 30.0);
-    nh_.param("absolute_pose_timeout", absolute_pose_timeout_, 300.0);
-    nh_.param("landmark_file", landmark_file_, std::string("data/test_landmarks.json"));
-    nh_.param("topics_file", topics_file_, std::string("data/pepperTopics.dat"));
-    nh_.param("camera_info_file", camera_info_file_, std::string("config/test_camera_info.json"));
-    nh_.param("camera_info_timeout", camera_info_timeout_, 10.0);
-    nh_.param("map_frame", map_frame_, std::string("map"));
-    nh_.param("odom_frame", odom_frame_, std::string("odom"));
+    // Dynamically resolve config file path in the package
+    std::string package_path = ros::package::getPath(ROS_PACKAGE_NAME);
+    std::string config_path = package_path + "/robotLocalizationTest/config/robotLocalizationTestConfiguration.json";
 
-    // Load topic names
+    // Load and parse the JSON configuration file
+    std::ifstream config_file(config_path);
+    if (!config_file.is_open()) {
+        ROS_ERROR("Could not open JSON config file at: %s", config_path.c_str());
+        ros::shutdown();
+        return;
+    }
+
+    Json::Value config;
+    Json::Reader reader;
+    if (!reader.parse(config_file, config)) {
+        ROS_ERROR("Failed to parse JSON config file");
+        ros::shutdown();
+        return;
+    }
+
+    // Load configuration parameters
+    verbose_ = config.get("verboseMode", false).asBool();
+    unit_test_mode_ = config.get("unitTestMode", false).asBool();
+    camera_ = config.get("camera", "FrontCamera").asString();
+    depth_camera_ = config.get("depthCamera", "DepthRealSense").asString();
+    use_depth_ = config.get("useDepth", false).asBool();
+    reset_interval_ = config.get("resetInterval", 30.0).asDouble();
+    absolute_pose_timeout_ = config.get("absolutePoseTimeout", 300.0).asDouble();
+    camera_info_timeout_ = config.get("cameraInfoTimeout", 10.0).asDouble();
+    use_head_yaw_ = config.get("useHeadYaw", true).asBool();
+    head_yaw_joint_name_ = config.get("headYawJointName", "HeadYaw").asString();
+    map_frame_ = config.get("mapFrame", "map").asString();
+    odom_frame_ = config.get("odomFrame", "odom").asString();
+    landmark_file_ = package_path + config.get("landmarkFile", "").asString();
+    topics_file_ = package_path + config.get("topicsFile", "").asString();
+    camera_info_file_ = package_path + config.get("cameraInfoFile", "").asString();
+
+    // Load topics and landmarks
     loadTopicNames();
-
-    // Load landmark coordinates
     loadLandmarks();
 
     // Subscribers
     odom_sub_ = nh_.subscribe(topic_map_["Odometry"], 10, &RobotLocalizationNode::odomCallback, this);
-    // Print subscription message
     printStartupMessage("subscribed to " + topic_map_["Odometry"]);
+
     imu_sub_ = nh_.subscribe(topic_map_["IMU"], 10, &RobotLocalizationNode::imuCallback, this);
-    // Print subscription message
     printStartupMessage("subscribed to " + topic_map_["IMU"]);
-    image_sub_ = it_.subscribe(topic_map_["RGBRealSense"], 10, &RobotLocalizationNode::imageCallback, this);
-    // Print subscription message
-    printStartupMessage("subscribed to " + topic_map_["RGBRealSense"]);
-    depth_sub_ = it_.subscribe(topic_map_["DepthRealSense"], 10, &RobotLocalizationNode::depthCallback, this);
-    // Print subscription message
-    printStartupMessage("subscribed to " + topic_map_["DepthRealSense"]);
+
+    image_sub_ = it_.subscribe(topic_map_[camera_], 10, &RobotLocalizationNode::imageCallback, this);
+    printStartupMessage("subscribed to " + topic_map_[camera_]);
+
+    depth_sub_ = it_.subscribe(topic_map_[depth_camera_], 10, &RobotLocalizationNode::depthCallback, this);
+    printStartupMessage("subscribed to " + topic_map_[depth_camera_]);
+
     joint_sub_ = nh_.subscribe(topic_map_["HeadYaw"], 10, &RobotLocalizationNode::jointCallback, this);
-    // Print subscription message
     printStartupMessage("subscribed to " + topic_map_["HeadYaw"]);
-    camera_info_sub_ = nh_.subscribe("/camera/color/camera_info", 1, &RobotLocalizationNode::cameraInfoCallback, this);
-    // Print subscription message
-    printStartupMessage("subscribed to /camera/color/camera_info");
+    
+    camera_info_sub_ = nh_.subscribe(topic_map_["CameraInfo"], 1, &RobotLocalizationNode::cameraInfoCallback, this);
+    printStartupMessage("subscribed to " + topic_map_["CameraInfo"]);
 
     // Publishers
     pose_pub_ = nh_.advertise<geometry_msgs::Pose2D>("/robotLocalization/pose", 10);

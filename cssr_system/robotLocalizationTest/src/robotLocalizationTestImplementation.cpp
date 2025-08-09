@@ -19,7 +19,7 @@
 
 void RobotLocalizationNode::printCopyrightMessage() {
     ROS_INFO("=======================================================");
-    ROS_INFO("Robot Localization Component");
+    ROS_INFO("Robot Localization Node");
     ROS_INFO("=======================================================");
     ROS_INFO("This project is funded by the African Engineering and");
     ROS_INFO("Technology Network (Afretec) Inclusive Digital");

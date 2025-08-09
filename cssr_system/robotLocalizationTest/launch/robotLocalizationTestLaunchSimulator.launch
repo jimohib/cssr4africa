@@ -26,24 +26,17 @@
     </include>
     
     <!-- Launch simulated RealSense camera -->
-    <node pkg="gazebo_ros" type="spawn_model" name="realsense_camera"
-          args="-urdf -model realsense_d435 -param robot_description_camera -x 0.1 -y 0.0 -z 1.2" />
+    <node pkg="gazebo_ros" type="spawn_model" name="realsense_camera" args="-urdf -model realsense_d435 -param robot_description_camera -x 0.1 -y 0.0 -z 1.2" />
           
     <!-- Simulated camera topics remapping -->
-    <node pkg="topic_tools" type="relay" name="sim_color_relay"
-          args="/camera/color/image_raw /camera/color/image_raw" />
-    <node pkg="topic_tools" type="relay" name="sim_depth_relay"
-          args="/camera/depth/image_rect_raw /camera/depth/image_raw" />
-    <node pkg="topic_tools" type="relay" name="sim_camera_info_relay"
-          args="/camera/color/camera_info /camera/color/camera_info" />
+    <node pkg="topic_tools" type="relay" name="sim_color_relay" args="/camera/color/image_raw /camera/color/image_raw" />
+    <node pkg="topic_tools" type="relay" name="sim_depth_relay" args="/camera/depth/image_rect_raw /camera/depth/image_raw" />
+    <node pkg="topic_tools" type="relay" name="sim_camera_info_relay" args="/camera/color/camera_info /camera/color/camera_info" />
 
     <!-- Static transformations for simulation -->
-    <node pkg="tf" type="static_transform_publisher" name="odom_to_map" 
-          args="0 0 0 0 0 0 map odom 100" />
-    <node pkg="tf" type="static_transform_publisher" name="head_to_camera_link"
-          args="0.1 0.0 0.2 0.0 0.0 0.0 Head camera_link 100" />
-    <node pkg="tf" type="static_transform_publisher" name="base_link_to_odom"
-          args="0 0 0 0 0 0 odom base_link 100" />
+    <node pkg="tf" type="static_transform_publisher" name="odom_to_map" args="0 0 0 0 0 0 map odom 100" />
+    <node pkg="tf" type="static_transform_publisher" name="head_to_camera_link" args="0.1 0.0 0.2 0.0 0.0 0.0 Head camera_link 100" />
+    <node pkg="tf" type="static_transform_publisher" name="base_link_to_odom" args="0 0 0 0 0 0 odom base_link 100" />
           
     <!-- Spawn ArUco markers in simulation -->
     <include file="$(find cssr_system)/launch/spawn_aruco_markers.launch">
@@ -51,40 +44,19 @@
     </include>
 
     <!-- Launch robotLocalization component under test -->
-    <node pkg="cssr_system" type="robotLocalization" name="robotLocalization" 
-          output="screen" respawn="false">
-        <!-- Test configuration parameters -->
-        <param name="verbose" value="true" />
-        <param name="use_depth" value="true" />
-        <param name="use_head_yaw" value="false" />
-        <param name="head_yaw_joint_name" value="HeadYaw" />
-        <param name="reset_interval" value="10.0" />
-        <param name="absolute_pose_timeout" value="60.0" />
-        <param name="config_file" value="$(find cssr_system)/robotLocalizationTest/data/test_landmarks.json" />
-        <param name="topics_file" value="$(find cssr_system)/robotLocalizationTest/data/simulatorTopics.dat" />
-        <param name="camera_info_file" value="$(find cssr_system)/robotLocalizationTest/config/test_camera_info.yaml" />
-        <param name="camera_info_timeout" value="5.0" />
-        <param name="map_frame" value="map" />
-        <param name="odom_frame" value="odom" />
-        
-        <!-- Unit test specific parameters -->
-        <param name="unit_test_mode" value="true" />
-        <param name="test_duration" value="180" />
+    <node pkg="cssr_system" type="robotLocalization" name="robotLocalization" output="screen" respawn="false">
         <param name="simulation_mode" value="true" />
     </node>
     
     <!-- Simulation test robot controller -->
-    <node pkg="cssr_system" type="robotLocalizationSimTestController" name="sim_test_controller" 
-          output="screen">
+    <node pkg="cssr_system" type="robotLocalizationSimTestController" name="sim_test_controller" output="screen">
         <param name="test_waypoints" value="[[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]]" />
         <param name="waypoint_interval" value="45.0" />
         <param name="movement_speed" value="0.3" />
     </node>
     
     <!-- Test monitoring -->
-    <node pkg="rostopic" type="rostopic" name="pose_monitor" 
-          args="echo /robotLocalization/pose" output="screen" />
-    <node pkg="rostopic" type="rostopic" name="marker_monitor" 
-          args="hz /robotLocalization/marker_image" output="screen" />
+    <node pkg="rostopic" type="rostopic" name="pose_monitor" args="echo /robotLocalization/pose" output="screen" />
+    <node pkg="rostopic" type="rostopic" name="marker_monitor" args="hz /robotLocalization/marker_image" output="screen" />
     
 </launch>

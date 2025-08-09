@@ -18,7 +18,32 @@ Accompanying this code is the deliverable report that provides a detailed explan
 ### Steps
 1. **Install the required software components:**
    
-   Set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf). 
+   Set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf).
+
+   **Install Intel RealSense SDK and ROS Wrapper (For the Intel realsense camera):**
+   
+   - Add Intel server to the list of repositories:
+      ```bash
+      sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE || sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE
+      sudo add-apt-repository "deb https://librealsense.intel.com/Debian/apt-repo $(lsb_release -cs) main" -u
+      ```
+   
+   - Install the Intel RealSense SDK 2.0 libraries and utilities:
+      ```bash
+      sudo apt update
+      sudo apt install librealsense2-dkms librealsense2-utils librealsense2-dev librealsense2-dbg librealsense2-udev-rules
+      ```
+   
+   - Install the ROS wrapper for RealSense cameras:
+      ```bash
+      # For ROS Noetic:
+      sudo apt install ros-noetic-realsense2-camera ros-noetic-realsense2-description
+      ```
+   
+   - Verify the installation by connecting your RealSense camera and running:
+      ```bash
+      realsense-viewer
+      ```  
 
 2. **Clone and build the project (if not already cloned)**:
    - Move to the source directory of the workspace
@@ -55,7 +80,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
    | `absolute_pose_timeout` | Timeout for pose validity (seconds) | Float | `300.0` |
    | `camera_info_timeout` | Timeout for retrieving camera intrinsic from camera (seconds) | Float | `15.0` |
 
-   **Landmark Data** (`data/landmarks.json`):
+   **Landmark (ArUco Markers) Data** (`data/landmarks.json`): These are the positions of ArUco markers placed in the known environment.
    ```json
    "landmarks": [
     {
@@ -127,66 +152,6 @@ Accompanying this code is the deliverable report that provides a detailed explan
     
       N.B: Running the `robotLocalization` node requires camera topics (`/camera/color/image_raw`, `/camera/aligned_depth_to_color/image_raw`, `/camera/color/camera_info`) and odometry topic (`/naoqi_driver/odom`) to be available from the robot or simulation environment.
 
-## Simulator Robot (Currently not functional for this node)
-
-### Steps
-1. **Install the required software components:**
-   
-   Set up the development environment for controlling the Pepper robot in the simulated environment. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf).
-
-2. **Clone and build the project (if not already cloned):**
-   - Move to the source directory of the workspace:
-      ```bash
-      cd $HOME/workspace/pepper_sim_ws/src
-      ```
-   - Clone the `CSSR4Africa` software from the GitHub repository:
-      ```bash
-      git clone https://github.com/cssr4africa/cssr4africa.git
-      ```
-   - Build the source files:
-      ```bash 
-         cd .. && source devel/setup.bash && catkin_make
-       ```
-
-3. **Update Configuration Files:**
-   
-   Navigate to the configuration files located at `~/workspace/pepper_sim_ws/src/cssr4africa/cssr_system/robotLocalization/config/` and update the configuration according to your simulation environment setup.
-
-   **Launch File Configuration** (`launch/robotLocalizationLaunchRobot.launch`):
-   | Parameter | Description | Values | Default |
-   |-----------|-------------|---------|---------|
-   | `verbose` | Diagnostic info printing | `true`, `false` | `false` |
-   | `use_depth` | Enable depth-based trilateration | `true`, `false` | `false` |
-   | `use_head_yaw` | Compensate for head rotation | `true`, `false` | `true` |
-   | `reset_interval` | Automatic pose reset interval (seconds) | Float | `10.0` |
-
-   - To execute the localization on the simulator platform, ensure the landmark configuration matches your simulation environment.
-
-    <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
-      <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
-      <span style="color: #cccccc;">If you need to update the configuration values, please refer to the <a href="https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf" style="color: #66b3ff;">D4.2.4 Robot Localization</a>. Otherwise, the recommended values are the ones already set in the configuration file.</span>
-  </div>
-
-4. **Run the `robotLocalization` from `cssr_system` package:**:
-   
-   Follow below steps, run in different terminals.
-    -  Source the workspace in first terminal:
-        ```bash
-          cd $HOME/workspace/pepper_sim_ws && source devel/setup.bash
-        ```
-    -  Launch the simulator robot:
-        ```bash
-          roslaunch cssr_system cssrSystemLaunchSimulator.launch
-        ```
-    - Open a new terminal to launch the `robotLocalization` node.
-        ```bash
-          cd $HOME/workspace/pepper_sim_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationLaunchRobot.launch
-        ```
-        
-        **Or run the node standalone** (if camera is already launched):
-        ```bash
-          cd $HOME/workspace/pepper_sim_ws && source devel/setup.bash && rosrun cssr_system robotLocalization
-        ```
 
 ## Executing an Action
 Upon launching the node, the hosted services (`/robotLocalization/set_pose`, `/robotLocalization/reset_pose`) are available and ready to be invoked. This can be verified by running the following command in a new terminal:

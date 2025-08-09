@@ -16,7 +16,32 @@ Accompanying this code is the deliverable report that provides a detailed explan
 ### Steps
 1. **Install the required software components:**
 
-  Install the required software components to instantiate and set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf). 
+  Install the required software components to instantiate and set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf).
+
+  **Install Intel RealSense SDK and ROS Wrapper (For the Intel realsense camera):**
+   
+   - Add Intel server to the list of repositories:
+      ```bash
+      sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE || sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE
+      sudo add-apt-repository "deb https://librealsense.intel.com/Debian/apt-repo $(lsb_release -cs) main" -u
+      ```
+   
+   - Install the Intel RealSense SDK 2.0 libraries and utilities:
+      ```bash
+      sudo apt update
+      sudo apt install librealsense2-dkms librealsense2-utils librealsense2-dev librealsense2-dbg librealsense2-udev-rules
+      ```
+   
+   - Install the ROS wrapper for RealSense cameras:
+      ```bash
+      # For ROS Noetic:
+      sudo apt install ros-noetic-realsense2-camera ros-noetic-realsense2-description
+      ```
+   
+   - Verify the installation by connecting your RealSense camera and running:
+      ```bash
+      realsense-viewer
+      ```   
 
 2. **Clone and build the project (if not already cloned)**:
    - Move to the source directory of the workspace
@@ -85,69 +110,6 @@ Accompanying this code is the deliverable report that provides a detailed explan
           cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationTestLaunchHarness.launch
         ```
 
-## Simulator Robot (Currently not functional for this node)
-### Steps
-1. **Install the required software components:**
-
-  Install the required software components to instantiate and set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf). 
-
-2. **Clone and build the project (if not already cloned)**:
-   - Move to the source directory of the workspace
-      ```bash 
-         cd $HOME/workspace/pepper_sim_ws/src
-       ```
-   - Clone the `CSSR4Africa` software from the GitHub repository
-      ```bash 
-         git clone https://github.com/cssr4africa/cssr4africa.git
-       ```
-   - Build the source files
-      ```bash 
-         cd .. && source devel/setup.bash && catkin_make
-       ```
-       
-3. **Update Configuration File:**
-   
-   Navigate to `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/config/robotLocalizationTestConfiguration.ini` and `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/launch/*.launch`  and update the configuration according to the key-value pairs below:
-
-   | Parameter | Description | Values |
-   |-----------|-------------|---------|
-   | `platform` | Target platform | `robot` or `simulator` |
-   | `verbose` | Diagnostic info printing | `true`, `false` |
-   | `use_depth` | Enable depth-based trilateration | `true`, `false` |
-   | `use_head_yaw` | Compensate for head rotation | `true`, `false` |
-   | `reset_interval` | Automatic pose reset interval | `5.0`, `10.0`, `30.0` |
-
-   - To execute the tests on the simulator platform, change the first line of `robotLocalizationTestConfiguration.ini` file in the config folder to "`platform simulator`". 
-   - Ensure the landmark data matches your simulation environment.
-  
-
-    <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
-      <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
-      <span style="color: #cccccc;">If you want to modify other configuration values, please refer to the <a href="https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf" style="color: #66b3ff;">D4.2.4 Robot Localization</a>. Otherwise, the preferred values are the ones already set in the `robotLocalizationTestConfiguration.ini` file.</span>
-  </div>
-
-4. **Run the `robotLocalizationTest` from the `unit_tests`  package**. 
-
-    Follow below steps, run in different terminals.
-    -  Source the workspace in first terminal:
-        ```bash
-          cd $HOME/workspace/pepper_sim_ws && source devel/setup.bash
-        ```
-    -  Launch the simulator robot:
-        ```bash
-          roslaunch unit_tests robotLocalizationLaunchTestSimulator.launch
-        ```
-
-    - Open a new terminal to launch the robotLocalizationTest (which launches the robotLocalization node and run tests on it).
-
-      Launch the test on Robot
-        ```bash
-          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationTestLaunchRobot.launch
-        ```
-      Launch the Harness Test. This creates drivers and stubs for pose validation.
-        ```bash
-          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationTestLaunchHarness.launch
-        ```
 
 ## Tests Executed
 ### Test A: Communication Functionality Validation

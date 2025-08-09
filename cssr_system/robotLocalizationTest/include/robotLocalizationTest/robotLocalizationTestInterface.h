@@ -19,6 +19,7 @@
 #define ROBOT_LOCALIZATION_INTERFACE_H
 
 #include <ros/ros.h>
+#include <ros/package.h>
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/Imu.h>
 #include <sensor_msgs/Image.h>
@@ -44,6 +45,8 @@
 #include <vector>
 #include <cssr_system/resetPose.h>
 #include <cssr_system/setPose.h>
+
+#define ROS_PACKAGE_NAME  "cssr_system"
 
 
 // Structure for 3D landmark representation
@@ -82,8 +85,8 @@ private:
     // Configuration parameters
     bool verbose_, use_depth_, use_head_yaw_, camera_info_received_;
     double reset_interval_, camera_info_timeout_, absolute_pose_timeout_;
+    std::string camera_, depth_camera_, head_yaw_joint_name_, map_frame_, odom_frame_;
     std::string landmark_file_, topics_file_, camera_info_file_;
-    std::string head_yaw_joint_name_, map_frame_, odom_frame_;
     
     // Pose tracking variables
     geometry_msgs::Pose2D current_pose_, baseline_pose_, last_odom_pose_;
