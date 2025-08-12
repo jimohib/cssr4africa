@@ -1062,10 +1062,12 @@ void RobotLocalizationNode::executeHeadScan() {
     // Move head to position
     moveHeadToPosition(target_yaw);
     
-    // Wait longer for Pepper's head movement (5 seconds)
-    ros::Duration(5.0).sleep();
+    // REDUCED: Wait time based on movement speed
+    double yaw_distance = std::abs(target_yaw - head_yaw_);
+    double wait_time = std::max(2.0, yaw_distance / head_scan_speed_ + 1.0); // Dynamic wait time
+    ros::Duration(wait_time).sleep();
     
-    // Check movement or timeout
+    // Check movement or timeout with shorter timeout per position
     static ros::Time position_start_time = ros::Time::now();
     static size_t last_scan_index = current_scan_index_;
     
@@ -1075,7 +1077,7 @@ void RobotLocalizationNode::executeHeadScan() {
     }
     
     bool movement_complete = isHeadMovementComplete();
-    bool position_timeout = (ros::Time::now() - position_start_time).toSec() > 10.0; // 10 second timeout
+    bool position_timeout = (ros::Time::now() - position_start_time).toSec() > 8.0; // Reduced timeout
     
     if (movement_complete || position_timeout) {
         if (position_timeout) {
@@ -1088,8 +1090,8 @@ void RobotLocalizationNode::executeHeadScan() {
         processCurrentScanPosition();
         current_scan_index_++;
         
-        // Longer delay between positions for Pepper
-        ros::Duration(2.0).sleep();
+        // REDUCED: Shorter delay between positions
+        ros::Duration(1.0).sleep();
     }
 }
 
@@ -1107,23 +1109,28 @@ void RobotLocalizationNode::moveHeadToPosition(double yaw_angle) {
     trajectory_msgs::JointTrajectoryPoint point;
     point.positions.push_back(yaw_angle);        // HeadYaw position
     point.positions.push_back(head_pitch_);      // HeadPitch position (keep current)
+    
+    // ADDED: Use head_scan_speed parameter to calculate movement time
+    double yaw_distance = std::abs(yaw_angle - head_yaw_);
+    double movement_time = std::max(1.0, yaw_distance / head_scan_speed_); // Minimum 1 second
+    
     point.velocities.push_back(0.0);             // HeadYaw velocity
     point.velocities.push_back(0.0);             // HeadPitch velocity
-    point.time_from_start = ros::Duration(4.0);  // 4 seconds to reach position
+    point.time_from_start = ros::Duration(movement_time);  // Dynamic time based on speed
     
     traj.points.push_back(point);
     
     // Check if publisher has subscribers
     if (head_traj_pub_.getNumSubscribers() > 0) {
         head_traj_pub_.publish(traj);
-        ROS_INFO("Published trajectory to move head to yaw=%.1f degrees, pitch=%.1f degrees", 
-                 yaw_angle * 180.0/M_PI, head_pitch_ * 180.0/M_PI);
+        ROS_INFO("Published trajectory to move head to yaw=%.1f degrees in %.1f seconds", 
+                 yaw_angle * 180.0/M_PI, movement_time);
     } else {
         ROS_WARN("No subscribers to head trajectory topic: %s", head_traj_pub_.getTopic().c_str());
     }
     
-    // Give time for movement to start
-    ros::Duration(1.0).sleep();
+    // Shorter wait time for faster movement
+    ros::Duration(0.5).sleep();
 }
 
 // Check if head movement complete
@@ -1299,15 +1306,247 @@ bool RobotLocalizationNode::computeAbsolutePoseWithAccumulatedMarkers() {
     auto selected_markers = selectBestMarkersForLocalization();
     
     if (selected_markers.size() < 3) {
-        ROS_WARN("Insufficient markers for localization: %zu", selected_markers.size());
+        ROS_WARN("Insufficient accumulated markers for localization: %zu", selected_markers.size());
         return false;
     }
     
-    // For now, use the existing computeAbsolutePose method
-    // In a full implementation, you'd modify this to use the specific accumulated markers
-    // and account for their head positions during detection
+    ROS_INFO("Using %zu accumulated markers for localization", selected_markers.size());
     
-    return computeAbsolutePose();
+    // Use first three markers for triangulation
+    int id1 = selected_markers[0].marker_id;
+    int id2 = selected_markers[1].marker_id;
+    int id3 = selected_markers[2].marker_id;
+    
+    // Get landmark positions from the loaded landmarks
+    if (projected_landmarks_.find(id1) == projected_landmarks_.end() || 
+        projected_landmarks_.find(id2) == projected_landmarks_.end() || 
+        projected_landmarks_.find(id3) == projected_landmarks_.end()) {
+        ROS_WARN("Unknown marker IDs in accumulated markers: %d, %d, %d", id1, id2, id3);
+        return false;
+    }
+    
+    double x1 = projected_landmarks_[id1].first, y1 = projected_landmarks_[id1].second;
+    double x2 = projected_landmarks_[id2].first, y2 = projected_landmarks_[id2].second;
+    double x3 = projected_landmarks_[id3].first, y3 = projected_landmarks_[id3].second;
+    
+    ROS_INFO("Using accumulated markers for localization:");
+    ROS_INFO("  Marker %d: landmark (%.3f, %.3f), detected at head yaw %.1f°", 
+             id1, x1, y1, selected_markers[0].head_yaw_angle * 180.0/M_PI);
+    ROS_INFO("  Marker %d: landmark (%.3f, %.3f), detected at head yaw %.1f°", 
+             id2, x2, y2, selected_markers[1].head_yaw_angle * 180.0/M_PI);
+    ROS_INFO("  Marker %d: landmark (%.3f, %.3f), detected at head yaw %.1f°", 
+             id3, x3, y3, selected_markers[2].head_yaw_angle * 180.0/M_PI);
+    
+    // Check for collinear markers and small landmark triangle area
+    double landmark_triangle_area = std::abs((x2-x1)*(y3-y1) - (y2-y1)*(x3-x1)) / 2.0;
+    if (landmark_triangle_area < 0.5) {
+        ROS_WARN("Landmark triangle area too small (%.3f), rejecting configuration", landmark_triangle_area);
+        return false;
+    }
+    
+    double cross_product = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+    if (std::abs(cross_product) < 0.01) {
+        ROS_WARN("Markers are nearly collinear, triangulation may be inaccurate");
+        return false;
+    }
+    
+    // Transform marker centers to account for head yaw when detected
+    // For simplicity, we'll assume the markers were detected close to head center
+    // In a more sophisticated implementation, you'd transform the image coordinates
+    // based on the head yaw angle when each marker was detected
+    
+    std::vector<std::pair<double, double>> transformed_centers;
+    for (size_t i = 0; i < 3; ++i) {
+        double center_x = selected_markers[i].center.x;
+        double center_y = selected_markers[i].center.y;
+        double head_yaw_offset = selected_markers[i].head_yaw_angle;
+        
+        // Simple transformation: adjust x-coordinate based on head yaw
+        // This is an approximation - a full implementation would use proper coordinate transforms
+        double fx_effective = fx_; // Use stored camera intrinsics
+        double cx_effective = cx_;
+        
+        // Adjust the center x-coordinate to compensate for head yaw
+        double yaw_offset_pixels = fx_effective * tan(head_yaw_offset);
+        double adjusted_center_x = center_x + yaw_offset_pixels;
+        
+        transformed_centers.push_back({adjusted_center_x, center_y});
+        
+        ROS_INFO("  Marker %d: original center (%.1f, %.1f), adjusted center (%.1f, %.1f)", 
+                 selected_markers[i].marker_id, center_x, center_y, adjusted_center_x, center_y);
+    }
+    
+    // Compute angles between marker pairs using transformed centers
+    double alpha1 = computeAngle(transformed_centers[0], transformed_centers[1]);
+    double alpha2 = computeAngle(transformed_centers[1], transformed_centers[2]);
+    
+    // Reject extreme angles
+    if (alpha1 < 5.0 || alpha2 < 5.0 || alpha1 > 120.0 || alpha2 > 120.0) {
+        ROS_WARN("Angles too extreme (alpha1=%.3f, alpha2=%.3f), rejecting configuration", alpha1, alpha2);
+        return false;
+    }
+    
+    ROS_INFO("Computed angles with accumulated markers: alpha1=%.3f degrees, alpha2=%.3f degrees", alpha1, alpha2);
+    
+    // Triangulation using the same logic as the original method
+    double xc1a, yc1a, xc1b, yc1b, xc2a, yc2a, xc2b, yc2b, r1, r2;
+    circle_centre(x2, y2, x1, y1, alpha1, &xc1a, &yc1a, &xc1b, &yc1b, &r1);
+    circle_centre(x3, y3, x2, y2, alpha2, &xc2a, &yc2a, &xc2b, &yc2b, &r2);
+    
+    ROS_INFO("Circle 1: center1=(%.3f, %.3f), center2=(%.3f, %.3f), radius=%.3f", xc1a, yc1a, xc1b, yc1b, r1);
+    ROS_INFO("Circle 2: center1=(%.3f, %.3f), center2=(%.3f, %.3f), radius=%.3f", xc2a, yc2a, xc2b, yc2b, r2);
+    
+    // Try all combinations of circle centers to find best solution
+    double best_xr = 0, best_yr = 0;
+    double best_score = -1;
+    bool found_valid = false;
+    
+    struct CirclePair {
+        double xc1, yc1, xc2, yc2;
+        std::string name;
+    };
+    
+    std::vector<CirclePair> combinations = {
+        {xc1a, yc1a, xc2a, yc2a, "closest-closest"},
+        {xc1a, yc1a, xc2b, yc2b, "closest-farthest"}, 
+        {xc1b, yc1b, xc2a, yc2a, "farthest-closest"},
+        {xc1b, yc1b, xc2b, yc2b, "farthest-farthest"}
+    };
+    
+    ROS_INFO("Testing circle combinations for triangulation:");
+    
+    for (const auto& combo : combinations) {
+        double x1_int, y1_int, x2_int, y2_int;
+        int result = circle_circle_intersection(combo.xc1, combo.yc1, r1, 
+                                              combo.xc2, combo.yc2, r2,
+                                              &x1_int, &y1_int, &x2_int, &y2_int);
+        
+        if (result == 0) {
+            ROS_INFO("  %s: No intersection", combo.name.c_str());
+            continue;
+        }
+        
+        // Check both intersection points
+        std::vector<std::pair<double, double>> candidates = {{x1_int, y1_int}, {x2_int, y2_int}};
+        
+        for (int i = 0; i < candidates.size(); i++) {
+            double xr_test = candidates[i].first;
+            double yr_test = candidates[i].second;
+            
+            // Calculate distances to landmarks
+            double dist_to_m1 = std::sqrt((xr_test - x1)*(xr_test - x1) + (yr_test - y1)*(yr_test - y1));
+            double dist_to_m2 = std::sqrt((xr_test - x2)*(xr_test - x2) + (yr_test - y2)*(yr_test - y2));
+            double dist_to_m3 = std::sqrt((xr_test - x3)*(xr_test - x3) + (yr_test - y3)*(yr_test - y3));
+            double min_dist_to_landmarks = std::min({dist_to_m1, dist_to_m2, dist_to_m3});
+            double avg_dist_to_landmarks = (dist_to_m1 + dist_to_m2 + dist_to_m3) / 3.0;
+            
+            // Reject obvious numerical errors
+            if (min_dist_to_landmarks < 0.01) {
+                ROS_INFO("  %s point %d: (%.3f, %.3f) - REJECTED: Too close to landmark", 
+                        combo.name.c_str(), i+1, xr_test, yr_test);
+                continue;
+            }
+            
+            // Calculate triangle areas
+            double area1 = std::abs((xr_test - x1) * (y2 - y1) - (x2 - x1) * (yr_test - y1)) / 2.0;
+            double area2 = std::abs((xr_test - x2) * (y3 - y2) - (x3 - x2) * (yr_test - y2)) / 2.0;
+            double area3 = std::abs((xr_test - x1) * (y3 - y1) - (x3 - x1) * (yr_test - y1)) / 2.0;
+            double avg_area = (area1 + area2 + area3) / 3.0;
+            
+            // Calculate viewing angles
+            double angle12 = std::abs(std::atan2(y1 - yr_test, x1 - xr_test) - std::atan2(y2 - yr_test, x2 - xr_test));
+            double angle23 = std::abs(std::atan2(y2 - yr_test, x2 - xr_test) - std::atan2(y3 - yr_test, x3 - xr_test));
+            double angle13 = std::abs(std::atan2(y1 - yr_test, x1 - xr_test) - std::atan2(y3 - yr_test, x3 - xr_test));
+            
+            // Normalize angles to [0, π]
+            if (angle12 > M_PI) angle12 = 2*M_PI - angle12;
+            if (angle23 > M_PI) angle23 = 2*M_PI - angle23;
+            if (angle13 > M_PI) angle13 = 2*M_PI - angle13;
+            
+            double min_angle = std::min({angle12, angle23, angle13});
+            double min_angle_deg = min_angle * 180.0 / M_PI;
+            
+            // Scoring system
+            double area_score = avg_area;
+            double distance_score = (avg_dist_to_landmarks < 1.0 || avg_dist_to_landmarks > 15.0) ? 0.1 : 
+                                   (avg_dist_to_landmarks < 2.0 || avg_dist_to_landmarks > 10.0) ? 0.5 : 
+                                   1.0 / (1.0 + std::abs(avg_dist_to_landmarks - 5.0));
+            double angle_score = (min_angle_deg < 10.0) ? 0.05 : (min_angle_deg < 20.0) ? 0.3 : 
+                                (min_angle_deg > 25.0) ? 2.0 : 1.0;
+            double separation_score = (std::min({
+                std::sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1)),
+                std::sqrt((x3-x2)*(x3-x2) + (y3-y2)*(y3-y2)),
+                std::sqrt((x3-x1)*(x3-x1) + (y3-y1)*(y3-y1))
+            }) > 1.0) ? 1.0 : 0.1;
+            double proximity_penalty = (min_dist_to_landmarks < 0.5) ? 0.2 : 
+                                      (min_dist_to_landmarks < 1.0) ? 0.7 : 1.0;
+            
+            double score = area_score * distance_score * angle_score * separation_score * proximity_penalty;
+            
+            ROS_INFO("  %s point %d: (%.3f, %.3f) - Score: %.3f", 
+                    combo.name.c_str(), i+1, xr_test, yr_test, score);
+            
+            if (score > best_score) {
+                best_score = score;
+                best_xr = xr_test;
+                best_yr = yr_test;
+                found_valid = true;
+                ROS_INFO("    -> NEW BEST SOLUTION!");
+            }
+        }
+    }
+    
+    if (!found_valid) {
+        ROS_WARN("No valid triangulation solution found with accumulated markers!");
+        return false;
+    }
+    
+    double xr = best_xr;
+    double yr = best_yr;
+    
+    ROS_INFO("Final robot position from accumulated markers: (%.3f, %.3f)", xr, yr);
+    
+    // Simple sanity check
+    double max_distance = std::max({
+        std::sqrt((xr-x1)*(xr-x1) + (yr-y1)*(yr-y1)),
+        std::sqrt((xr-x2)*(xr-x2) + (yr-y2)*(yr-y2)),
+        std::sqrt((xr-x3)*(xr-x3) + (yr-y3)*(yr-y3))
+    });
+    
+    if (max_distance > 20.0) {
+        ROS_WARN("Computed robot position seems unrealistic (max distance: %.3f)", max_distance);
+        return false;
+    }
+    
+    // Compute yaw using first marker (account for head yaw when detected)
+    double theta = computeYaw(transformed_centers[0], x1, y1, xr, yr);
+    
+    // Adjust theta to account for head yaw offset when marker was detected
+    theta -= selected_markers[0].head_yaw_angle;
+    
+    ROS_INFO("Computed robot orientation: %.3f degrees", theta * 180.0 / M_PI);
+    
+    // Update pose
+    baseline_pose_.x = xr;
+    baseline_pose_.y = yr;
+    baseline_pose_.theta = theta;
+    current_pose_ = baseline_pose_;
+    last_absolute_pose_time_ = ros::Time::now();
+    
+    // Update adjustments
+    initial_robot_x = xr;
+    initial_robot_y = yr;
+    initial_robot_theta = theta;
+    adjustment_x_ = initial_robot_x - odom_x_;
+    adjustment_y_ = initial_robot_y - odom_y_;
+    adjustment_theta_ = initial_robot_theta - odom_theta_;
+    
+    ROS_INFO("✅ SUCCESSFUL LOCALIZATION WITH ACCUMULATED MARKERS!");
+    ROS_INFO("   Position: (%.3f, %.3f)", xr, yr);
+    ROS_INFO("   Orientation: %.3f degrees", theta * 180.0 / M_PI);
+    ROS_INFO("   Used markers: %d, %d, %d", id1, id2, id3);
+    
+    return true;
 }
 
 // Publish localization status
