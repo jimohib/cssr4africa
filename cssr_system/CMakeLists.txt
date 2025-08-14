@@ -16,7 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   image_transport
   cv_bridge
-  tf
+  tf2
+  tf2_ros
   aruco
   angles
   actionlib
@@ -29,6 +30,15 @@ find_package(catkin REQUIRED COMPONENTS
 find_package(OpenCV REQUIRED)
 
 
+find_package(yaml-cpp REQUIRED)
+
+
+find_package(jsoncpp REQUIRED)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSONCPP jsoncpp)
+
+
 ################################################
 ## Declare ROS messages, services and actions ##
 ################################################
@@ -38,7 +48,8 @@ add_service_files(
   DIRECTORY
   robotLocalization/srv
   FILES
-  SetPose.srv
+  resetPose.srv
+  setPose.srv
   
 )
 
@@ -46,7 +57,7 @@ add_service_files(
   DIRECTORY
   robotNavigation/srv
   FILES
-  set_goal.srv
+  setGoal.srv
   
 )
 
@@ -84,8 +95,9 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  INCLUDE_DIRS robotLocalization robotNavigation arucoLocalization
-  CATKIN_DEPENDS roscpp roslib std_msgs nav_msgs geometry_msgs sensor_msgs image_transport cv_bridge tf angles message_runtime
+  INCLUDE_DIRS robotLocalization robotLocalizationTest robotNavigation
+  CATKIN_DEPENDS roscpp roslib std_msgs nav_msgs geometry_msgs sensor_msgs image_transport cv_bridge tf2 tf2_ros angles message_runtime
+  DEPENDS OpenCV yaml-cpp
 )
 
 
@@ -100,15 +112,20 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${aruco_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  ${YAML_CPP_INCLUDE_DIR}
+  ${JSONCPP_INCLUDE_DIRS}
+
   robotLocalization/include
+  robotLocalizationTest/include
   robotNavigation/include
-  arucoLocalization/include
+  
 )
 
 ## Add Subdirectories for robotLocalization and robotNavigation
 add_subdirectory(robotLocalization)
+add_subdirectory(robotLocalizationTest)
 add_subdirectory(robotNavigation)
-add_subdirectory(arucoLocalization)
+
 
 
 ###########
@@ -119,5 +136,3 @@ add_subdirectory(arucoLocalization)
 # install(DIRECTORY robotNavigation/data/
 #   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/robotNavigation/data
 # )
-
-

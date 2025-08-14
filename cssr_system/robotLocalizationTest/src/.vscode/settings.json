@@ -1,0 +1,14 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/br/workspace/pepper_rob_ws/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages",
+        "/home/br/pynaoqi-python2.7-2.5.5.5-linux64/lib/python2.7/site-packages",
+        "/home/br/pynaoqi-python2.7-2.5.5.5-linux64/lib/python2.7/site-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/br/workspace/pepper_rob_ws/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages",
+        "/home/br/pynaoqi-python2.7-2.5.5.5-linux64/lib/python2.7/site-packages",
+        "/home/br/pynaoqi-python2.7-2.5.5.5-linux64/lib/python2.7/site-packages"
+    ]
+}

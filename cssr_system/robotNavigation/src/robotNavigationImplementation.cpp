@@ -1,32 +1,67 @@
+/* robotNavigationImplementation.cpp
+*
+* Author: Birhanu Shimelis Girma, Carnegie Mellon University Africa
+* Email:bgirmash@andrew.cmu.edu
+* Date: June 05, 2025
+* Version: v1.0
+*
+* Copyright (C) 2023 CSSR4Africa Consortium
+*
+* This project is funded by the African Engineering and Technology Network (Afretec)
+* Inclusive Digital Transformation Research Grant Programme.
+*
+* Website: www.cssr4africa.org
+*
+* This program comes with ABSOLUTELY NO WARRANTY.
+*/
 
 
-#include "robot_navigation/robotNavigationInterface.h"
+#include "robotNavigation/robotNavigationInterface.h"
 
 // Directory where the package is located
 std::string packagedir;
 
 // Coordinates of the robot in the world (x, y, z, theta) - updated by subscribing to the /robotLocalization/pose topic
-std::vector<double> robot_pose = {0.0, 0.0, 0.0};
+std::vector<double> robotPose = {2.0, 7.8, 270.0};
 
 // Flag to indicate if a waypoint is being followed
 bool waypointFlag;
 
 // Configuration parameters
 std::string implementation_platform;
-std::string environment_map_file;
-std::string configuration_map_file;
-int path_planning_algorithm;
-bool social_distance_mode;
-std::string simulator_topics;
+std::string environmentMapFile;
+std::string configurationMapFile;
+int pathPlanningAlgorithm;
+bool socialDistanceMode;
 std::string robot_topics;
 string topics_filename;
 bool verbose_mode;
+
+// Global variables moved from application file
+double x;
+double y;
+double theta;
+
+int suppression_factor = 5;
+// Robot pose input which contains the x, y, and theta values of the start location
+double x_start;
+double y_start;
+double theta_start;
+
+// Service request which contains the x, y, and theta values of the goal location
+double x_goal;
+double y_goal;
+double theta_goal;
+std::string robot_type;
+std::string nodeName = "robotNavigation";
+Mat mapImage;
+Mat configurationSpaceImage;
 
 // Publisher for the velocity commands
 ros::Publisher navigation_velocity_publisher;
 ros::Publisher navigation_pelvis_publisher;
 
-std::atomic<bool> is_moving(false);  // Flag to indicate if the robot is moving
+std::atomic<bool> is_moving(false); 
 
 // Size of the map
 int x_map_size;
@@ -41,20 +76,16 @@ double room_height;  // Height of the room in meters
 // Window names to display the maps
 string mapWindowName = "Environment Map"; 
 
+
 locomotionParameterDataType locomotionParameterData;
 
 geometry_msgs::Twist msg;
 
 std::vector<double> leg_home_position = {0.0, 0.0, 0.0};  // Hip pitch, hip roll, knee pitch
 std::vector<double> head_home_position = {0.0, 0.0};   // Head pitch and yaw
-// Mat images to display the maps
-// Mat mapImage;
-// Mat mapImageColor;
-// Mat mapImageLarge;
-// Mat configurationSpaceImage;
 
-std::vector<std::vector<int>> graph;  // Graph to store the map
-std::vector<int> robot_path; // Path to store the path
+std::vector<std::vector<int>> graph; 
+std::vector<int> robot_path; 
 std::vector<pointType> valid_path;
 std::vector<waypointType> valid_waypoints;
 
@@ -65,6 +96,54 @@ int directions_4_way[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
 int directions_8_way[8][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {-1, 1}, {1, -1}, {1, 1}};
 
 
+
+/* This defines the callback function for the /robotNavigation/set_goal service */
+bool setGoal(cssr_system::setGoal::Request  &service_request, cssr_system::setGoal::Response &service_response){
+    // Extract request parameters
+    x_goal = service_request.goal_x;
+    y_goal = service_request.goal_y;
+    theta_goal = service_request.goal_theta;    
+    theta_goal = radians(theta_goal); // Convert the angle to radians
+
+    x_goal = roundFloatingPoint(x_goal, 1);
+    y_goal = roundFloatingPoint(y_goal, 1);
+
+    int navigation_goal_success = 0;                     
+
+    
+    x_start = current_x;
+    x_start = roundFloatingPoint(x_start, 1);
+    y_start = current_y;
+    y_start = roundFloatingPoint(y_start, 1);
+    theta_start = current_theta;
+
+    if(x_start > (double) x_map_size/100 || y_start > (double) y_map_size/100){
+        ROS_ERROR("Robot pose is outside the map");
+        service_response.navigation_goal_success = navigation_goal_success;                
+        return true;
+    }
+    if(x_goal > (double) x_map_size/100 || y_goal > (double) y_map_size/100){
+        ROS_ERROR("Goal location is outside the map");
+        service_response.navigation_goal_success = navigation_goal_success;              
+        return true;
+    }
+
+    navigation_goal_success = navigateToGoal(x_start, y_start, theta_start, x_goal, y_goal, theta_goal, pathPlanningAlgorithm, mapImage, configurationSpaceImage, navigation_velocity_publisher, verbose_mode);
+
+    if(navigation_goal_success == 1){
+        robotPose[0] = current_x;
+        robotPose[1] = current_y;
+        robotPose[2] = degrees(current_theta);
+        writeRobotPoseInput(robotPose);     
+    }
+
+    service_response.navigation_goal_success = navigation_goal_success;               
+   
+    // Print the response from the service
+    ROS_INFO("Response from /robotNavigation/set_goal service: [%ld]\n", (long int)service_response.navigation_goal_success);
+    return true;
+}
+
 /* 
  *   Function to read the the robot pose from an input file
  * @param:
@@ -73,21 +152,19 @@ int directions_8_way[8][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {-1, 1
  * @return:
  *    None
  */
-void read_robot_pose_input(std::vector<double>& robot_pose_input){
-    bool debug_mode = false;   // used to turn debug message on
+void readRobotPoseInput(std::vector<double>& robot_pose_input){
+    bool debug_mode = false;  
 
-    std::string data_file = "robotPose.dat";    // data filename
-    std::string data_path;                                          // data path
-    std::string data_path_and_file;                                 // data path and filename
-
-    std::string x_key = "x";                                         // x key
-    std::string y_key = "y";                                         // y key
-    std::string theta_key = "theta";                                 // theta key
-
-    std::string x_value;                                             // x value
-    std::string y_value;                                             // y value
-    std::string z_value;                                             // z value
-    std::string theta_value;                                         // theta value
+    std::string data_file = "robotPose.dat";    
+    std::string data_path;                                          
+    std::string data_path_and_file;                                 
+    std::string x_key = "x";                                        
+    std::string y_key = "y";                                         
+    std::string theta_key = "theta";                                 
+    std::string x_value;                                             
+    std::string y_value;                                             
+    std::string z_value;                                           
+    std::string theta_value;                                        
 
     // Construct the full path of the configuration file
     #ifdef ROS
@@ -105,10 +182,10 @@ void read_robot_pose_input(std::vector<double>& robot_pose_input){
     std::ifstream data_if(data_path_and_file.c_str());
     if (!data_if.is_open()){
         ROS_ERROR("Unable to open the data file %s\n", data_path_and_file.c_str());
-        prompt_and_exit(1);
+        promptAndExit(1);
     }
 
-    std::string data_line_read;  // variable to read the line in the file
+    std::string data_line_read;  
     // Get key-value pairs from the data file
     while(std::getline(data_if, data_line_read)){
         std::istringstream iss(data_line_read);
@@ -150,15 +227,15 @@ void read_robot_pose_input(std::vector<double>& robot_pose_input){
 }
 
 /* 
- *   Function to read the the robot pose from an input file
+ *   Function to write the robot pose from to a file
  * @param:
  *   robot_pose_input: vector to store the robot pose
  *
  * @return:
  *    None
  */
-void write_robot_pose_input(std::vector<double>& robot_pose_input){
-    bool debug_mode = false;   // used to turn debug message on
+void writeRobotPoseInput(std::vector<double>& robot_pose_input){
+    bool debug_mode = false;  
 
     std::string data_file = "robotPose.dat";    // data filename
     std::string data_path;                                          // data path
@@ -191,7 +268,7 @@ void write_robot_pose_input(std::vector<double>& robot_pose_input){
       std::ofstream data_of(data_path_and_file.c_str());
       if (!data_of.is_open()){
          printf("Unable to open the data file %s\n", data_path_and_file.c_str());
-         prompt_and_exit(1);
+         promptAndExit(1);
       }
 
       // Write the robot pose to the data file
@@ -199,7 +276,6 @@ void write_robot_pose_input(std::vector<double>& robot_pose_input){
       data_of << y_key << "\t\t\t" << robot_pose_input[1] << std::endl;
       data_of << theta_key << "\t\t" << robot_pose_input[2] << std::endl;
 
-      // Close the data file
       data_of.close();
 }
 
@@ -215,7 +291,7 @@ void write_robot_pose_input(std::vector<double>& robot_pose_input){
  *   @return:
  *       0 if successful, 1 otherwise
  */
-int extract_topic(string key, string topic_file_name, string *topic_name){
+int extractTopic(string key, string topic_file_name, string *topic_name){
     bool debug = false;   // used to turn debug message on
     
     std::string topic_path;                                   // topic filename path
@@ -289,7 +365,7 @@ int extract_topic(string key, string topic_file_name, string *topic_name){
  *   @return:
  *       None
  */
-void move_to_position(ControlClientPtr& client, const std::vector<std::string>& joint_names, double duration, 
+void moveToPosition(ControlClientPtr& client, const std::vector<std::string>& joint_names, double duration, 
                         bool open_hand, string hand, string hand_topic, 
                         const std::string& position_name, std::vector<double> positions){
     // Create a goal message
@@ -320,28 +396,26 @@ void move_to_position(ControlClientPtr& client, const std::vector<std::string>& 
 }
 
 
-int read_configuration_file(string* platform, string* environment_map_file, string* configuration_map_file, int* path_planning_algorithm, bool* social_distance_mode, string* simulator_topics, string* robot_topics, string* topics_filename, bool* debug_mode){
+int readConfigurationFile(string* environmentMapFile, string* configurationMapFile, int* path_planning_algorithm, bool* socialDistanceMode, string* robot_topics, string* topics_filename, bool* debug_mode, string* robot_type) {
     std::string config_file = "robotNavigationConfiguration.ini";       // data filename
     std::string config_path;                                            // data path
     std::string config_path_and_file;                                   // data path and filename
      
-    std::string platform_key = "platform";                              // platform key 
     std::string environment_map_file_key = "environmentMap";            // camera key
     std::string configuration_map_file_key = "configurationMap";        // realignment threshold key
     std::string path_planning_algorithm_key = "pathPlanning";           // realignment threshold key
-    std::string social_distance_mode_key = "socialDistance";          // x offset to head yaw key
-    std::string simulator_topics_key = "simulatorTopics";               // simulator topics key
+    std::string social_distance_mode_key = "socialDistance";            // x offset to head yaw key
     std::string robot_topics_key = "robotTopics";                       // robot topics key
     std::string verbose_mode_key = "verboseMode";                       // verbose mode key
+    std::string robot_type_key = "robotType";         
 
-    std::string platform_value;                                         // platform value 
     std::string environment_map_file_value;                             // camera value
     std::string configuration_map_file_value;                           // realignment threshold value
     std::string path_planning_algorithm_value;                            // realignment threshold value
     std::string social_distance_mode_value;                             // x offset to head yaw value
-    std::string simulator_topics_value;                                 // simulator topics value
     std::string robot_topics_value;                                     // robot topics value
     std::string verbose_mode_value;                                     // verbose mode value
+    std::string robot_type_value;                     
 
     // Construct the full path of the configuration file
     #ifdef ROS
@@ -354,7 +428,7 @@ int read_configuration_file(string* platform, string* environment_map_file, stri
     config_path += "/robotNavigation/config/";
     config_path_and_file = config_path;
     config_path_and_file += config_file;
-
+    *topics_filename = *robot_topics;
     // Open configuration file
     std::ifstream data_if(config_path_and_file.c_str());
     if (!data_if.is_open()){
@@ -372,31 +446,21 @@ int read_configuration_file(string* platform, string* environment_map_file, stri
         std::getline(iss, param_value);
         iss >> param_value;
         trim(param_value);
-        // printf("paramKey: %s; paramValue: %s\n", paramKey.c_str(), paramValue.c_str());
         
-        if (param_key == platform_key){ 
-            boost::algorithm::to_lower(param_value); // modifies string to lower case
-            platform_value = param_value;
-            *platform = param_value;
-            if(platform_value != "robot" && platform_value != "simulator"){
-                printf("Platform value not supported. Supported values are: robot and simulator\n");
-                return 1;
-            }
-        }
         
-        else if (param_key == environment_map_file_key){ 
+        if (param_key == environment_map_file_key){ 
             environment_map_file_value = param_value;
-            *environment_map_file = param_value;
+            *environmentMapFile = param_value;
         }
 
         else if (param_key == configuration_map_file_key){ 
             configuration_map_file_value = param_value;
-            *configuration_map_file = param_value;
+            *configurationMapFile = param_value;
         }
 
         else if (param_key == path_planning_algorithm_key){ 
             path_planning_algorithm_value = param_value;
-            boost::algorithm::to_lower(param_value); // modifies string to lower case
+            boost::algorithm::to_lower(param_value); 
             if(param_value == "bfs"){
                 *path_planning_algorithm = BFS_ALGORITHM;
             }
@@ -406,30 +470,28 @@ int read_configuration_file(string* platform, string* environment_map_file, stri
             else if((param_value == "a*") || (param_value == "a-star") || (param_value == "a_star") || (param_value == "astar")){
                 *path_planning_algorithm = ASTAR_ALGORITHM;
             }
+            else if(param_value == "dfs"){
+                *path_planning_algorithm = DFS_ALGORITHM;
+            }
             else{
-                printf("Path planning algorithm value not supported. Supported values are: bfs, dijkstra, and a*\n");
+                printf("Path planning algorithm value not supported. Supported values are: bfs, dijkstra, dfs, and a*\n");
                 return 1;
             }
         }
 
         else if (param_key == social_distance_mode_key){ 
-            boost::algorithm::to_lower(param_value); // modifies string to lower case
+            boost::algorithm::to_lower(param_value); 
             social_distance_mode_value = param_value;
             if(social_distance_mode_value == "true"){
-                *social_distance_mode = true;
+                *socialDistanceMode = true;
             }
             else if(social_distance_mode_value == "false"){
-                *social_distance_mode = false;
+                *socialDistanceMode = false;
             }
             else{
                 printf("Social distance mode value not supported. Supported values are: true and false\n");
                 return 1;
             }
-        }
-
-        else if (param_key == simulator_topics_key){ 
-            simulator_topics_value = param_value;
-            *simulator_topics = param_value;
         }
 
         else if (param_key == robot_topics_key){ 
@@ -438,7 +500,7 @@ int read_configuration_file(string* platform, string* environment_map_file, stri
         }
 
         else if (param_key == verbose_mode_key){ 
-            boost::algorithm::to_lower(param_value); // modifies string to lower case
+            boost::algorithm::to_lower(param_value); 
             verbose_mode_value = param_value;
             if(verbose_mode_value == "true"){
                 *debug_mode = true;
@@ -451,35 +513,45 @@ int read_configuration_file(string* platform, string* environment_map_file, stri
                 return 1;
             }
         }
+        else if (param_key == robot_type_key) {
+            robot_type_value = param_value;
+            *robot_type = param_value;
+        }
     }
     data_if.close();
 
-    if(*platform == "" || *environment_map_file == "" || *configuration_map_file == "" || *simulator_topics == "" || *robot_topics == ""){
+    if(*environmentMapFile == "" || *configurationMapFile == "" || *robot_topics == ""){
         printf("Unable to find a valid configuration. Verify you have values in the configuration.\n");
         return 1;
     }
+    
+    // Since platform is always robot, directly set the topics filename
+    *topics_filename = *robot_topics;
 
-    if (platform_value == "robot"){
-        *topics_filename = *robot_topics;
-    }
-    else if(platform_value == "simulator"){
-        *topics_filename = *simulator_topics;
+    // Verify robot type
+    if(*robot_type != "new" && *robot_type != "old") {
+        ROS_WARN("Invalid robotType value: %s. Using default 'old'", robot_type_value.c_str());
+        *robot_type = "old";
     }
 
     return 0;
 }
 
-/* Print the robot navigation configuration */
-void print_configuration(string platform, string environment_map_file, string configuration_map_file, int path_planning_algorithm, bool social_distance_mode, string simulator_topics, string robot_topics, string topics_filename, bool debug_mode){
-    printf("Platform: %s\n", platform.c_str());
-    printf("Environment Map File: %s\n", environment_map_file.c_str());
-    printf("Configuration Map File: %s\n", configuration_map_file.c_str());
-    printf("Path Planning Algorithm: %s\n", path_planning_algorithm == BFS_ALGORITHM ? "BFS" : path_planning_algorithm == DIJKSTRA_ALGORITHM ? "Dijsktra" : "A*");
-    printf("Social Distance Mode: %s\n", social_distance_mode ? "true" : "false");
-    printf("Simulator Topics: %s\n", simulator_topics.c_str());
-    printf("Robot Topics: %s\n", robot_topics.c_str());
-    printf("Topics Filename: %s\n", topics_filename.c_str());
-    printf("Debug Mode: %s\n", debug_mode ? "true" : "false");
+/* Print the overt attention configuration */
+void printConfiguration(string environmentMapFile, string configurationMapFile, int pathPlanningAlgorithm, bool socialDistanceMode, string robot_topics, string topics_filename, bool debug_mode, string robot_type){
+    extern std::string nodeName;    
+    ROS_INFO("%s: Environment Map File: %s", nodeName.c_str(), environmentMapFile.c_str());
+    ROS_INFO("%s: Configuration Map File: %s", nodeName.c_str(), configurationMapFile.c_str());
+    ROS_INFO("%s: Path Planning Algorithm: %s", nodeName.c_str(), 
+             pathPlanningAlgorithm == BFS_ALGORITHM ? "BFS" : 
+             pathPlanningAlgorithm == DIJKSTRA_ALGORITHM ? "Dijkstra" : 
+             pathPlanningAlgorithm == ASTAR_ALGORITHM ? "A*" : 
+             pathPlanningAlgorithm == DFS_ALGORITHM ? "DFS" : "Unknown");
+    ROS_INFO("%s: Social Distance Mode: %s", nodeName.c_str(), socialDistanceMode ? "true" : "false");
+    ROS_INFO("%s: Robot Topics: %s", nodeName.c_str(), robot_topics.c_str());
+    ROS_INFO("%s: Topics Filename: %s", nodeName.c_str(), topics_filename.c_str());
+    ROS_INFO("%s: Verbose Mode: %s", nodeName.c_str(), debug_mode ? "true" : "false");
+    ROS_INFO("%s: Robot Type: %s", nodeName.c_str(), robot_type.c_str());
 }
 
 /******************************************************************************
@@ -545,11 +617,9 @@ void odomMessageReceived(const nav_msgs::Odometry &msg)
    else if (current_theta > PI)
       current_theta -= 2 * PI;
 
-   // printf("odom_x,y,theta %5.3f %5.3f %5.3f; adjustment_x,y,theta  %5.3f %5.3f %5.3f; x, y %5.3f %5.3f; current_x,y,theta %5.3f %5.3f %5.3f\n",  odom_x, odom_y, odom_theta, adjustment_x, adjustment_y, adjustment_theta, x, y, current_x, current_y, current_theta);
 
    if (debug)
    {
-      // printf("Odometry: position = (%5.3f, %5.3f) orientation = %5.3f\n", current_x, current_y, current_theta);
       ROS_INFO_THROTTLE(1, "Odometry: position = (%5.3f, %5.3f) orientation = %5.3f", current_x, current_y, current_theta);
 
    }
@@ -611,7 +681,7 @@ void readLocomotionParameterData(char filename[], locomotionParameterDataType *l
    if ((fp_config = fopen(filename, "r")) == 0)
    {
      printf("Error can't open locomition parameter file %s\n", filename);
-     prompt_and_exit(0);
+     promptAndExit(0);
    }
 
    /*** set default values ***/
@@ -637,8 +707,14 @@ void readLocomotionParameterData(char filename[], locomotionParameterDataType *l
    for (i = 0; i < NUMBER_OF_KEYS; i++)
    {
 
-     fgets(input_string, STRING_LENGTH, fp_config);
-     // if (debug)  printf ("Input string: %s",input_string);
+        if (fgets(input_string, STRING_LENGTH, fp_config) == NULL)
+        {
+            // Handle error or EOF
+            printf("Error: Unable to read all configuration parameters. Expected %d parameters, but could only read %d\n", 
+                NUMBER_OF_KEYS, i);
+            fclose(fp_config);
+            return; 
+        }
 
      /* extract the key */
 
@@ -695,7 +771,7 @@ void readLocomotionParameterData(char filename[], locomotionParameterDataType *l
               sscanf(input_string, " %s %lf", key, &(locomotionParameterData->clearance)); // required clearance between robot and obstacle
               break;
            case 13:
-              sscanf(input_string, " %s %s", key, value); // BFS,  Dijkstra,  ASTAR
+              sscanf(input_string, " %s %s", key, value); // BFS,  Dijkstra,  ASTAR, DFS
               for (k = 0; k < (int)strlen(value); k++)
                  value[k] = tolower(value[k]);
               if (strcmp(value, "bfs") == 0)
@@ -704,6 +780,8 @@ void readLocomotionParameterData(char filename[], locomotionParameterDataType *l
                  locomotionParameterData->shortest_path_algorithm = DIJKSTRA;
               else if (strcmp(value, "astar") == 0)
                  locomotionParameterData->shortest_path_algorithm = ASTAR;
+              else if(strcmp(value, "dfs") == 0)
+                locomotionParameterData->shortest_path_algorithm = DFS;
               else
                  locomotionParameterData->shortest_path_algorithm = ASTAR; // default value is A-star
               break;
@@ -723,22 +801,22 @@ void readLocomotionParameterData(char filename[], locomotionParameterDataType *l
    // printf("value %s\n", value);
    if (debug)
    {
-     printf("POSITION_TOLERANCE:        %.2f\n", locomotionParameterData->position_tolerance);
-     printf("POSITION_TOLERANCE_GOAL:   %.2f\n", locomotionParameterData->position_tolerance_goal);
-     printf("ANGLE_TOLERANCE_ORIENTING: %.2f\n", locomotionParameterData->angle_tolerance_orienting);
-     printf("ANGLE_TOLERANCE_GOING:     %.2f\n", locomotionParameterData->angle_tolerance_going);
-     printf("POSITION_GAIN_DQ:          %.2f\n", locomotionParameterData->position_gain_dq);
-     printf("ANGLE_GAIN_DQ:             %.2f\n", locomotionParameterData->angle_gain_dq);
-     printf("POSITION_GAIN_MIMO:        %.2f\n", locomotionParameterData->position_gain_mimo);
-     printf("ANGLE_GAIN_MIMO:           %.2f\n", locomotionParameterData->angle_gain_mimo);
-     printf("MIN_LINEAR_VELOCITY:       %.2f\n", locomotionParameterData->min_linear_velocity);
-     printf("MAX_LINEAR_VELOCITY:       %.2f\n", locomotionParameterData->max_linear_velocity);
-     printf("MIN_ANGULAR_VELOCITY:      %.2f\n", locomotionParameterData->min_angular_velocity);
-     printf("MAX_ANGULAR_VELOCITY:      %.2f\n", locomotionParameterData->max_angular_velocity);
-     printf("CLEARANCE:                 %.2f\n", locomotionParameterData->clearance);
-     printf("SHORTEST_PATH_ALGORITHM    %d\n", locomotionParameterData->shortest_path_algorithm);
-     printf("ROBOT_AVAILABLE            %d\n", locomotionParameterData->robot_available);
-   }
+   ROS_INFO("%s: POSITION_TOLERANCE:        %.2f", nodeName.c_str(), locomotionParameterData->position_tolerance);
+   ROS_INFO("%s: POSITION_TOLERANCE_GOAL:   %.2f", nodeName.c_str(), locomotionParameterData->position_tolerance_goal);
+   ROS_INFO("%s: ANGLE_TOLERANCE_ORIENTING: %.2f", nodeName.c_str(), locomotionParameterData->angle_tolerance_orienting);
+   ROS_INFO("%s: ANGLE_TOLERANCE_GOING:     %.2f", nodeName.c_str(), locomotionParameterData->angle_tolerance_going);
+   ROS_INFO("%s: POSITION_GAIN_DQ:          %.2f", nodeName.c_str(), locomotionParameterData->position_gain_dq);
+   ROS_INFO("%s: ANGLE_GAIN_DQ:             %.2f", nodeName.c_str(), locomotionParameterData->angle_gain_dq);
+   ROS_INFO("%s: POSITION_GAIN_MIMO:        %.2f", nodeName.c_str(), locomotionParameterData->position_gain_mimo);
+   ROS_INFO("%s: ANGLE_GAIN_MIMO:           %.2f", nodeName.c_str(), locomotionParameterData->angle_gain_mimo);
+   ROS_INFO("%s: MIN_LINEAR_VELOCITY:       %.2f", nodeName.c_str(), locomotionParameterData->min_linear_velocity);
+   ROS_INFO("%s: MAX_LINEAR_VELOCITY:       %.2f", nodeName.c_str(), locomotionParameterData->max_linear_velocity);
+   ROS_INFO("%s: MIN_ANGULAR_VELOCITY:      %.2f", nodeName.c_str(), locomotionParameterData->min_angular_velocity);
+   ROS_INFO("%s: MAX_ANGULAR_VELOCITY:      %.2f", nodeName.c_str(), locomotionParameterData->max_angular_velocity);
+   ROS_INFO("%s: CLEARANCE:                 %.2f", nodeName.c_str(), locomotionParameterData->clearance);
+   ROS_INFO("%s: SHORTEST_PATH_ALGORITHM    %d", nodeName.c_str(), locomotionParameterData->shortest_path_algorithm);
+   ROS_INFO("%s: ROBOT_AVAILABLE            %d", nodeName.c_str(), locomotionParameterData->robot_available);
+    }
 }
 
 /***************************************************************************************************************************
@@ -749,7 +827,7 @@ void readLocomotionParameterData(char filename[], locomotionParameterDataType *l
 
 
 // Function to build the graph from the image
-void build_graph_from_map(cv::Mat& img, std::vector<std::vector<int>>& graph, int algorithm) {
+void buildGraphFromMap(cv::Mat& img, std::vector<std::vector<int>>& graph, int algorithm) {
     int rows = img.rows;
     int cols = img.cols;
 
@@ -759,7 +837,12 @@ void build_graph_from_map(cv::Mat& img, std::vector<std::vector<int>>& graph, in
     if (algorithm == BFS) {
         directions = directions_4_way;
         num_directions = 4;
-    } else { // DIJKSTRA and ASTAR use 8-way movement
+    } 
+    else if (algorithm == DFS_ALGORITHM) {
+        directions = directions_4_way;
+        num_directions = 4;
+    }
+    else { // DIJKSTRA and ASTAR use 8-way movement
         directions = directions_8_way;
         num_directions = 8;
     }
@@ -787,7 +870,7 @@ void build_graph_from_map(cv::Mat& img, std::vector<std::vector<int>>& graph, in
 
 
 // Manhattan distance heuristic function
-int manhattan_distance_heuristic(int start, int node, int goal, int cols) {
+int manhattanDistanceHeuristic(int start, int node, int goal, int cols) {
     int goal_x = goal % cols;
     int goal_y = goal / cols;
     int node_x = node % cols;
@@ -806,13 +889,12 @@ int manhattan_distance_heuristic(int start, int node, int goal, int cols) {
 }
 
 // Euclidean distance heuristic function
-int euclidean_distance_heuristic(int start, int node, int goal, int cols) {
+int euclideanDistanceHeuristic(int start, int node, int goal, int cols) {
     int goal_x = goal % cols;
     int goal_y = goal / cols;
     int node_x = node % cols;
     int node_y = node / cols;
     int heuristic = static_cast<int>(std::sqrt(std::pow(goal_x - node_x, 2) + std::pow(goal_y - node_y, 2)));
-   //  heuristic = heuristic * 1000;
 
     int start_x = start % cols;
     int start_y = start / cols;
@@ -830,17 +912,17 @@ int euclidean_distance_heuristic(int start, int node, int goal, int cols) {
 }
 
 
-void convert_world_to_pixel(double world_x, double world_y, int& pixel_x, int& pixel_y, double room_width, double room_height, int image_width, int image_height) {
+void convertWorldToPixel(double world_x, double world_y, int& pixel_x, int& pixel_y, double room_width, double room_height, int image_width, int image_height) {
     pixel_x = static_cast<int>(world_x * image_width / room_width);
     pixel_y = static_cast<int>(image_height - (world_y * image_height / room_height));
 }
 
-void convert_pixel_to_world(int pixel_x, int pixel_y, double& world_x, double& world_y, double room_width, double room_height, int image_width, int image_height) {
+void convertPixelToWorld(int pixel_x, int pixel_y, double& world_x, double& world_y, double room_width, double room_height, int image_width, int image_height) {
     world_x = static_cast<double>(pixel_x) * (room_width / image_width);
     world_y = room_height - static_cast<double>(pixel_y) * (room_height / image_height); // Invert Y for world coordinates
 }
 
-void draw_path_on_map(const std::vector<waypointType>& valid_waypoints, const cv::Mat& img, const std::string& output_path) {
+void drawPathOnMap(const std::vector<waypointType>& valid_waypoints, const cv::Mat& img, const std::string& output_path) {
     cv::Mat output_image;
 
     cvtColor(img, output_image, cv::COLOR_GRAY2BGR);
@@ -850,6 +932,7 @@ void draw_path_on_map(const std::vector<waypointType>& valid_waypoints, const cv
         cv::drawMarker(output_image, cv::Point(valid_waypoints[i].x, valid_waypoints[i].y), cv::Scalar(0, 255, 0), cv::MARKER_CROSS, 10, 2);
     }
 
+  
    for (int i=0; i<valid_path.size(); i++) {
       cv::drawMarker(output_image, cv::Point(valid_path[i].x, valid_path[i].y), cv::Scalar(0, 255, 0), cv::MARKER_SQUARE, 5, 1);
    }
@@ -857,7 +940,7 @@ void draw_path_on_map(const std::vector<waypointType>& valid_waypoints, const cv
     cv::imwrite(output_path, output_image); // Save the output image
 }
 
-double path_orientation(std::vector<pointType>& valid_path, int i) {
+double pathOrientation(std::vector<pointType>& valid_path, int i) {
     double delta_x;
     double delta_y;
     double orientation = 0;
@@ -880,65 +963,206 @@ double path_orientation(std::vector<pointType>& valid_path, int i) {
     return orientation;
 }
 
-void compute_waypoints(std::vector<int>& robot_path, std::vector<pointType>& valid_path, std::vector<waypointType>& valid_waypoints, int suppression_factor, double curvature_angle){
-    double valid_orientation;
 
-
-   // Convert the robot path to valid path
-    for(int i = 0; i < robot_path.size(); i++){
-      int x = robot_path[i] % image_width;
-      int y = robot_path[i] / image_width;
-      valid_path.push_back({x, y});
-   }
-
-    valid_orientation = path_orientation(valid_path, 0);
-    valid_waypoints.push_back({valid_path[0].x, valid_path[0].y, valid_orientation});
-
-    int i;
-    for (i = 1; i < valid_path.size() - 1; i++){
-        double next_orientation = path_orientation(valid_path, i+1);
-        double previous_orientation = path_orientation(valid_path, i-1);
-        if(fabs(next_orientation - previous_orientation) > curvature_angle){
-            valid_orientation = path_orientation(valid_path, i);
-            valid_waypoints.push_back({valid_path[i].x, valid_path[i].y, valid_orientation});
-        }
-    }
-
-    if(i < valid_path.size()){
-        valid_orientation = path_orientation(valid_path, i);
-        valid_waypoints.push_back({valid_path[i].x, valid_path[i].y, valid_orientation});
-    }
-
+void computeWaypoints(std::vector<int>& robot_path, std::vector<pointType>& valid_path, std::vector<waypointType>& valid_waypoints, int suppression_factor, double curvature_angle) {
+    // Clear previous waypoints
+    valid_path.clear();
+    valid_waypoints.clear();
     
-
-    int j;
-    for(int i = 0; i < valid_waypoints.size()-1; i++){
-        j = i+1;
-        while(j < valid_waypoints.size() && sqrt(pow(valid_waypoints[i].x - valid_waypoints[j].x, 2) + pow(valid_waypoints[i].y - valid_waypoints[j].y, 2)) < suppression_factor){
-            if(j < valid_waypoints.size() - 1){
-                for(int k = j; k < valid_waypoints.size() - 1; k++){
-                    valid_waypoints[k].x = valid_waypoints[k + 1].x;
-                    valid_waypoints[k].y = valid_waypoints[k + 1].y;
-                    valid_waypoints[k].theta = valid_waypoints[k + 1].theta;
-                }
+    if (robot_path.size() < 2) {
+        return;
+    }
+    
+    // Convert robot path to valid path (pixel coordinates)
+    for (int i = 0; i < robot_path.size(); i++) {
+        int x = robot_path[i] % image_width;
+        int y = robot_path[i] / image_width;
+        valid_path.push_back({x, y});
+    }
+    
+    if (valid_path.size() < 3) {
+        // For very short paths, just use start and end
+        if (valid_path.size() >= 1) {
+            double orientation = (valid_path.size() > 1) ? 
+                atan2(valid_path[1].y - valid_path[0].y, valid_path[1].x - valid_path[0].x) : 0.0;
+            valid_waypoints.push_back({valid_path[0].x, valid_path[0].y, orientation});
+        }
+        if (valid_path.size() >= 2) {
+            double orientation = atan2(valid_path[valid_path.size()-1].y - valid_path[valid_path.size()-2].y, 
+                                     valid_path[valid_path.size()-1].x - valid_path[valid_path.size()-2].x);
+            valid_waypoints.push_back({valid_path.back().x, valid_path.back().y, orientation});
+        }
+        return;
+    }
+    
+    // Parameters for intelligent waypoint placement
+    const double MIN_TURNING_RADIUS = 30.0;  // Minimum turning radius in pixels
+    const double WAYPOINT_SPACING = std::max(40.0, (double)suppression_factor * 2.0);  // Minimum distance between waypoints
+    const double DIRECTION_CHANGE_THRESHOLD = curvature_angle * 0.7;  // Threshold for significant direction changes
+    const int LOOKAHEAD_DISTANCE = 15;  // How far ahead to look for path analysis
+    
+    std::vector<waypointType> candidate_waypoints;
+    
+    // Always add the starting point
+    double start_orientation = atan2(valid_path[1].y - valid_path[0].y, valid_path[1].x - valid_path[0].x);
+    candidate_waypoints.push_back({valid_path[0].x, valid_path[0].y, start_orientation});
+    
+    // Analyze path segments for intelligent waypoint placement
+    for (int i = LOOKAHEAD_DISTANCE; i < valid_path.size() - LOOKAHEAD_DISTANCE; i++) {
+        // Calculate local path curvature and direction changes
+        std::vector<double> segment_directions;
+        
+        // Analyze direction changes in a window around current point
+        for (int j = -LOOKAHEAD_DISTANCE/2; j <= LOOKAHEAD_DISTANCE/2; j += 3) {
+            int idx1 = std::max(0, std::min((int)valid_path.size()-1, i + j - 3));
+            int idx2 = std::max(0, std::min((int)valid_path.size()-1, i + j + 3));
+            
+            if (idx2 > idx1) {
+                double dir = atan2(valid_path[idx2].y - valid_path[idx1].y, 
+                                 valid_path[idx2].x - valid_path[idx1].x);
+                segment_directions.push_back(dir);
             }
-            valid_waypoints.pop_back();
+        }
+        
+        if (segment_directions.size() < 2) continue;
+        
+        // Calculate maximum direction change in this segment
+        double max_direction_change = 0.0;
+        for (int j = 1; j < segment_directions.size(); j++) {
+            double angle_diff = segment_directions[j] - segment_directions[j-1];
+            
+            // Normalize angle difference to [-PI, PI]
+            while (angle_diff > M_PI) angle_diff -= 2 * M_PI;
+            while (angle_diff < -M_PI) angle_diff += 2 * M_PI;
+            
+            max_direction_change = std::max(max_direction_change, std::abs(angle_diff));
+        }
+        
+        // Check if this is a significant direction change requiring a waypoint
+        bool significant_turn = max_direction_change > DIRECTION_CHANGE_THRESHOLD;
+        
+        // Check if we're far enough from the last waypoint
+        bool sufficient_distance = true;
+        if (!candidate_waypoints.empty()) {
+            double dist = sqrt(pow(valid_path[i].x - candidate_waypoints.back().x, 2) + 
+                             pow(valid_path[i].y - candidate_waypoints.back().y, 2));
+            sufficient_distance = (dist >= WAYPOINT_SPACING);
+        }
+        
+        // Calculate path complexity ahead (used for velocity planning)
+        double path_complexity = 0.0;
+        for (int j = i; j < std::min(i + LOOKAHEAD_DISTANCE*2, (int)valid_path.size()-1); j++) {
+            if (j < segment_directions.size()-1) {
+                path_complexity += std::abs(segment_directions[j+1] - segment_directions[j]);
+            }
+        }
+        
+        // Place waypoint if it meets criteria
+        if ((significant_turn && sufficient_distance) || 
+            (sufficient_distance && path_complexity > DIRECTION_CHANGE_THRESHOLD * 2)) {
+            
+            // Calculate optimal approach angle for this waypoint
+            double approach_angle = calculateOptimalApproachAngle(valid_path, i, LOOKAHEAD_DISTANCE);
+            candidate_waypoints.push_back({valid_path[i].x, valid_path[i].y, approach_angle});
         }
     }
+    
+    // Always add the final destination
+    int last_idx = valid_path.size() - 1;
+    double end_orientation = (valid_path.size() > 1) ? 
+        atan2(valid_path[last_idx].y - valid_path[last_idx-1].y, 
+              valid_path[last_idx].x - valid_path[last_idx-1].x) : 0.0;
+    candidate_waypoints.push_back({valid_path[last_idx].x, valid_path[last_idx].y, end_orientation});
+    
+    // Optimize waypoint sequence for smooth transitions
+    valid_waypoints = optimizeWaypointSequence(candidate_waypoints, MIN_TURNING_RADIUS);
+    
+    // Ensure minimum waypoint count for proper navigation
+    if (valid_waypoints.size() < 2 && valid_path.size() >= 2) {
+        valid_waypoints.clear();
+        valid_waypoints.push_back({valid_path[0].x, valid_path[0].y, start_orientation});
+        valid_waypoints.push_back({valid_path.back().x, valid_path.back().y, end_orientation});
+    }
+}
 
-    // Print waypoints
-    // print_waypoints(valid_waypoints, room_width, room_height, image_width, image_height);
+// Helper function to calculate optimal approach angle for smooth transitions
+double calculateOptimalApproachAngle(const std::vector<pointType>& path, int current_idx, int lookahead) {
+    if (current_idx >= path.size()) return 0.0;
+    
+    // Look ahead to determine the best approach angle
+    int future_idx = std::min(current_idx + lookahead, (int)path.size() - 1);
+    int past_idx = std::max(current_idx - lookahead/2, 0);
+    
+    // Calculate weighted average direction considering both past and future path
+    double future_weight = 0.7;  // Prioritize future direction
+    double past_weight = 0.3;
+    
+    double future_angle = 0.0;
+    double past_angle = 0.0;
+    
+    if (future_idx > current_idx) {
+        future_angle = atan2(path[future_idx].y - path[current_idx].y, 
+                           path[future_idx].x - path[current_idx].x);
+    }
+    
+    if (current_idx > past_idx) {
+        past_angle = atan2(path[current_idx].y - path[past_idx].y, 
+                         path[current_idx].x - path[past_idx].x);
+    }
+    
+    // Weighted combination for smooth transitions
+    double optimal_angle = future_weight * future_angle + past_weight * past_angle;
+    
+    return optimal_angle;
+}
+
+// Helper function to optimize waypoint sequence for turning radius constraints
+std::vector<waypointType> optimizeWaypointSequence(const std::vector<waypointType>& candidates, double min_turning_radius) {
+    if (candidates.size() <= 2) return candidates;
+    
+    std::vector<waypointType> optimized;
+    optimized.push_back(candidates[0]);  // Always keep start
+    
+    for (int i = 1; i < candidates.size() - 1; i++) {
+        const auto& prev = optimized.back();
+        const auto& current = candidates[i];
+        const auto& next = candidates[i + 1];
+        
+        // Calculate required turning radius at this waypoint
+        double dist_to_prev = sqrt(pow(current.x - prev.x, 2) + pow(current.y - prev.y, 2));
+        double dist_to_next = sqrt(pow(next.x - current.x, 2) + pow(next.y - current.y, 2));
+        
+        // Calculate angle between incoming and outgoing vectors
+        double angle_in = atan2(current.y - prev.y, current.x - prev.x);
+        double angle_out = atan2(next.y - current.y, next.x - current.x);
+        double turn_angle = angle_out - angle_in;
+        
+        // Normalize turn angle
+        while (turn_angle > M_PI) turn_angle -= 2 * M_PI;
+        while (turn_angle < -M_PI) turn_angle += 2 * M_PI;
+        
+        // Check if this waypoint creates a feasible turn
+        if (std::abs(turn_angle) > 0.1 && dist_to_prev > min_turning_radius * 0.5) {
+            // Adjust waypoint angle for smooth transition
+            waypointType adjusted = current;
+            adjusted.theta = (angle_in + angle_out) / 2.0;  // Average of incoming and outgoing angles
+            optimized.push_back(adjusted);
+        }
+    }
+    
+    optimized.push_back(candidates.back());  // Always keep end
+    return optimized;
 }
 
 
-void print_waypoints(std::vector<waypointType>& valid_waypoints, double room_width, double room_height, int image_width, int image_height){
+//##########################################################################################################
+
+void printWaypoints(std::vector<waypointType>& valid_waypoints, double room_width, double room_height, int image_width, int image_height){
     for(int i = 0; i < valid_waypoints.size(); i++){
         // Convert to world coordinates
         double world_x;
         double world_y;
-        convert_pixel_to_world(valid_waypoints[i].x, valid_waypoints[i].y, world_x, world_y, room_width, room_height, image_width, image_height);
-      //   double world_x = (valid_waypoints[i].x) * (room_width / image_width);
-        // double world_y = room_height - (valid_waypoints[i].y) * (room_height / image_height); // Invert Y for world coordinates
+        convertPixelToWorld(valid_waypoints[i].x, valid_waypoints[i].y, world_x, world_y, room_width, room_height, image_width, image_height);
 
         // ROS_INFO("Path Point: (%.2f, %.2f)", world_x, world_y);
         ROS_INFO("Waypoint %d: x = %.2f, y = %.2f, theta = %.2f\n", i, world_x, world_y, valid_waypoints[i].theta);
@@ -947,7 +1171,7 @@ void print_waypoints(std::vector<waypointType>& valid_waypoints, double room_wid
 
 // A* pathfinding algorithm
 std::vector<int> astar(int start, int goal, const std::vector<std::vector<int>>& graph, int cols, int heuristic_type) {
-    auto heuristic = (heuristic_type == MANHATTAN_HEURISTIC) ? manhattan_distance_heuristic : euclidean_distance_heuristic;
+    auto heuristic = (heuristic_type == MANHATTAN_HEURISTIC) ? manhattanDistanceHeuristic : euclideanDistanceHeuristic;
 
     std::vector<int> dist(graph.size(), INT_MAX);
     std::vector<int> came_from(graph.size(), -1);
@@ -983,6 +1207,7 @@ std::vector<int> astar(int start, int goal, const std::vector<std::vector<int>>&
 
     return {};
 }
+
 
 
 std::vector<int> bfs(int start, int goal, const std::vector<std::vector<int>>& graph) {
@@ -1052,6 +1277,60 @@ std::vector<int> dijkstra(int start, int goal, const std::vector<std::vector<int
     return {};
 }
 
+
+std::vector<int> dfs(int start, int goal, const std::vector<std::vector<int>>& graph) {
+    std::stack<int> stack;
+    std::vector<int> came_from(graph.size(), -1);
+    std::vector<bool> visited(graph.size(), false);
+
+    stack.push(start);
+    visited[start] = true;
+
+    while (!stack.empty()) {
+        int current = stack.top();
+        stack.pop();
+
+        if (current == goal) {
+            // Reconstruct path
+            std::vector<int> path;
+            while (current != -1) {
+                path.push_back(current);
+                current = came_from[current];
+            }
+            std::reverse(path.begin(), path.end());
+            return path;
+        }
+
+        // Get neighbors and sort by distance to goal (CLOSEST FIRST)
+        std::vector<int> neighbors = graph[current];
+        
+        // Sort neighbors by Manhattan distance to goal
+        std::sort(neighbors.begin(), neighbors.end(), [goal](int a, int b) {
+            int cols = image_width; // Your global variable
+            
+            int ax = a % cols, ay = a / cols;
+            int bx = b % cols, by = b / cols;
+            int gx = goal % cols, gy = goal / cols;
+            
+            int dist_a = abs(ax - gx) + abs(ay - gy);
+            int dist_b = abs(bx - gx) + abs(by - gy);
+            
+            return dist_a < dist_b; // Closest to goal first
+        });
+
+        // Add neighbors to stack in REVERSE order (so closest gets processed first)
+        for (auto it = neighbors.rbegin(); it != neighbors.rend(); ++it) {
+            int neighbor = *it;
+            if (!visited[neighbor]) {
+                visited[neighbor] = true;
+                came_from[neighbor] = current;
+                stack.push(neighbor);
+            }
+        }
+    }
+    
+    return {};
+}
 /***************************************************************************************************************************
 
    General purpose function definitions 
@@ -1068,7 +1347,7 @@ int signnum(double x)
     return -1;
 }
 
-void display_error_and_exit(char error_message[])
+void displayErrorAndExit(char error_message[])
 {
    printf("%s\n", error_message);
    printf("Hit any key to continue >>");
@@ -1076,17 +1355,17 @@ void display_error_and_exit(char error_message[])
    exit(1);
 }
 
-void print_message_to_file(FILE *fp, char message[])
+void printMessageToFile(FILE *fp, char message[])
 {
    fprintf(fp, "The message is: %s\n", message);
 }
 
 #ifdef ROS
 /**
- Linux (POSIX) implementation of _kbhit().
+ Linux (POSIX) implementation of kbhit().
  Morgan McGuire, morgan@cs.brown.edu
  */
-int _kbhit() {
+int kbhit() {
     static const int STDIN = 0;
     static bool initialized = false;
 
@@ -1124,7 +1403,7 @@ std::vector<cv::Point> calculateBezierCurve(const std::vector<cv::Point>& points
     return curvePoints;
 }
 
-int plan_robot_path(double start_x, double start_y, double start_theta, double goal_x, double goal_y, double goal_theta, int path_planning_algorithm, Mat mapImage, Mat configurationSpaceImage, bool debug){
+int planRobotPath(double start_x, double start_y, double start_theta, double goal_x, double goal_y, double goal_theta, int pathPlanningAlgorithm, Mat mapImage, Mat configurationSpaceImage, bool debug){
    // Vertex number of the start and goal cells
     int robot;                              // vertex number of start cell
     int goal;                               // vertex number of goal cell
@@ -1149,38 +1428,34 @@ int plan_robot_path(double start_x, double start_y, double start_theta, double g
     x_start_map = y_map_size - (int) (start_y * 100);  // NB: convert to cm and change frame of reference
     y_start_map = (int) (start_x * 100);               // ibid.
 
-    convert_world_to_pixel(start_x, start_y, start_pixel_x, start_pixel_y, room_width, room_height, image_width, image_height);
-    convert_world_to_pixel(goal_x, goal_y, end_pixel_x, end_pixel_y, room_width, room_height, image_width, image_height);
+    convertWorldToPixel(start_x, start_y, start_pixel_x, start_pixel_y, room_width, room_height, image_width, image_height);
+    convertWorldToPixel(goal_x, goal_y, end_pixel_x, end_pixel_y, room_width, room_height, image_width, image_height);
 
 
     // Convert the goal location to map coordinates
     x_goal_map = y_map_size - (int) (goal_y * 100);   // NB: convert to cm and change frame of reference
-    y_goal_map = (int) (goal_x * 100);                //
-
-
-   //  // Obtain the vertex number of the start and goal cells
-   //  robot = vertex_number(x_start_map, y_start_map, x_map_size);
-   //  goal  = vertex_number(x_goal_map,  y_goal_map,  x_map_size);
+    y_goal_map = (int) (goal_x * 100);                
 
     robot = start_pixel_y * image_width + start_pixel_x;
     goal = end_pixel_y * image_width + end_pixel_x;
 
-    printf("Robot vertex: %d, Goal vertex: %d\n", robot, goal);
 
     int heuristic_choice = MANHATTAN_HEURISTIC;  // Choose heuristic for A* (Manhattan or Euclidean)
-   // int heuristic_choice = EUCLIDEAN_HEURISTIC;  // Choose heuristic for A* (Manhattan or Euclidean)
     
     robot_path.clear();
     valid_path.clear();
     valid_waypoints.clear();
    
-    if (path_planning_algorithm == BFS) {
+    if (pathPlanningAlgorithm == BFS) {
         robot_path = bfs(robot, goal, graph);
-    } else if (path_planning_algorithm == DIJKSTRA) {
+    } else if (pathPlanningAlgorithm == DIJKSTRA) {
         robot_path = dijkstra(robot, goal, graph);
-    } else if (path_planning_algorithm == ASTAR) {
+    } else if (pathPlanningAlgorithm == ASTAR) {
         robot_path = astar(robot, goal, graph, image_width, heuristic_choice);
+    } else if (pathPlanningAlgorithm == DFS) {
+        robot_path = dfs(robot, goal, graph);
     }
+
     /* get the waypoints  */
     /* ------------------ */
 
@@ -1188,19 +1463,19 @@ int plan_robot_path(double start_x, double start_y, double start_theta, double g
         ROS_ERROR("No path found from (%.2f, %.2f, %.2f) to (%.2f, %.2f, %.2f)", start_x, start_y, start_theta, goal_x, goal_y, goal_theta);
         return 0;
     }  
-    compute_waypoints(robot_path, valid_path, valid_waypoints, SUPPRESSION_FACTOR, CURVATURE_THRESHOLD);
+    computeWaypoints(robot_path, valid_path, valid_waypoints, SUPPRESSION_FACTOR, CURVATURE_THRESHOLD);
 
-   // mark_waypoints_on_config_map(path_planning_algorithm, mapImage, configurationSpaceImage, debug);
+   // markWaypointsOnConfigMap(pathPlanningAlgorithm, mapImage, configurationSpaceImage, debug);
    std::string output_filename = "environmentMapWaypoints";
-   mark_waypoints_on_map(path_planning_algorithm, mapImage, output_filename, debug);
+   markWaypointsOnMap(pathPlanningAlgorithm, mapImage, output_filename, debug);
 
    output_filename = "configMapWaypoints";
-   mark_waypoints_on_map(path_planning_algorithm, configurationSpaceImage, output_filename, debug);
+   markWaypointsOnMap(pathPlanningAlgorithm, configurationSpaceImage, output_filename, debug);
 
    return 1;              // Return 1 if the path is found
 }
 
-void mark_waypoints_on_map(int path_planning_algorithm, Mat mapImage, std::string output_filename, bool debug){
+void markWaypointsOnMap(int pathPlanningAlgorithm, Mat mapImage, std::string output_filename, bool debug){
    // parameters for image write
    vector<int> compressionParams;  
 
@@ -1245,51 +1520,43 @@ void mark_waypoints_on_map(int path_planning_algorithm, Mat mapImage, std::strin
 
    std::string name_extension = "Astar";
 
-   if(path_planning_algorithm == BFS_ALGORITHM){
+   if(pathPlanningAlgorithm == BFS_ALGORITHM){
       name_extension = "BFS";
 
-   }else if(path_planning_algorithm == DIJKSTRA_ALGORITHM){
+   }else if(pathPlanningAlgorithm == DIJKSTRA_ALGORITHM){
       name_extension = "Dijkstra";
    }
-   else if(path_planning_algorithm == ASTAR_ALGORITHM){
+   else if(pathPlanningAlgorithm == ASTAR_ALGORITHM){
       name_extension = "Astar";
+   }
+   else if(pathPlanningAlgorithm == DFS_ALGORITHM){
+      name_extension = "DFS";
    }
 
    std::string filename = output_filename + name_extension + ".png";
 
-   save_waypoint_map(compressionParams, mapImageLarge, filename); // Save the map with the path and waypoints
+   saveWaypointMap(compressionParams, mapImageLarge, filename); // Save the map with the path and waypoints
 }
 
-// int navigate_to_goal(double start_x, double start_y, double start_theta, double goal_x, double goal_y, double goal_theta, int path_planning_algorithm, Mat mapImage, ros::Publisher velocity_publisher, bool debug){
-int navigate_to_goal(double start_x, double start_y, double start_theta, double goal_x, double goal_y, double goal_theta, int path_planning_algorithm, Mat mapImage, Mat configurationSpaceImage, ros::Publisher velocity_publisher, bool debug){
+int navigateToGoal(double start_x, double start_y, double start_theta, double goal_x, double goal_y, double goal_theta, int pathPlanningAlgorithm, Mat mapImage, Mat configurationSpaceImage, ros::Publisher velocity_publisher, bool debug){
    // Set the publish rate for the velocity commands
    ros::Rate rate(PUBLISH_RATE); // Publish  at this rate (in Hz)  until the node is shut down
 
 
    int path_found = 0;
    int robot_moved = 0;
-   path_found = plan_robot_path(start_x, start_y, start_theta, goal_x, goal_y, goal_theta, path_planning_algorithm, mapImage, configurationSpaceImage, debug);
+   path_found = planRobotPath(start_x, start_y, start_theta, goal_x, goal_y, goal_theta, pathPlanningAlgorithm, mapImage, configurationSpaceImage, debug);
    if (path_found){
       if(debug){
          printf("Path found from (%5.3f %5.3f %5.3f) to (%5.3f %5.3f %5.3f)\n", start_x, start_y, degrees(start_theta), goal_x, goal_y, degrees(goal_theta));
-         // print_waypoints(valid_waypoints, room_width, room_height, image_width, image_height);
+         // printWaypoints(valid_waypoints, room_width, room_height, image_width, image_height);
       }
-      robot_moved = move_robot(start_x, start_y, start_theta, goal_x, goal_y, goal_theta, velocity_publisher, rate, debug);
+      robot_moved = moveRobot(start_x, start_y, start_theta, goal_x, goal_y, goal_theta, velocity_publisher, rate, debug);
    }
    return robot_moved;
 }
 
-/*  
- *   Function to create a control client
- *   The function creates a control client for the specified topic.
- *
- *   @param:
- *       topic_name: the topic name
- *
- *   @return:
- *       the control client
- */
-ControlClientPtr create_client(const std::string& topic_name) {
+ControlClientPtr createClient(const std::string& topic_name) {
     // Create a new action client
     ControlClientPtr actionClient(new ControlClient(topic_name, true));
     int max_iterations = 10;                                            // maximum number of iterations to wait for the server to come up
@@ -1306,22 +1573,7 @@ ControlClientPtr create_client(const std::string& topic_name) {
 }
 
 
-
-/* 
- *   Function to return all joints of an actuator to the home position.
- *   This function is called on only one actuator at a time.
- *   It used the global variable set above for the home positions of the actuators.
- *
- * @param:
- *   actuator: string indicating the actuator to move to the home position
- *   topics_filename: string indicating the topics filename
- *   interpolation: integer indicating the interpolation type
- *   debug: boolean indicating the debug mode
- *
- * @return:
- *   None
- */
-int go_to_home(std::string actuator, std::string topics_filename, bool debug){
+int goToHome(std::string actuator, std::string topics_filename, bool debug){
     // ros::Duration(0.5).sleep(); // Wait for one second to ensure that the joint states are updated
     std::vector<double> actuator_state;                             // stores the current state of the actuator joints
     std::vector<double> actuator_home_position;                     // stores the home position of the actuator joints
@@ -1337,17 +1589,18 @@ int go_to_home(std::string actuator, std::string topics_filename, bool debug){
     string hand_topic = "/pepper_dcm/RightHand_controller/follow_joint_trajectory";
 
     // Extract the actuator topic
-    if(extract_topic(actuator, topics_filename, &actuator_topic)){
+    if(extractTopic(actuator, topics_filename, &actuator_topic)){
         return 0;
     }
 
     // Set the home duration
     home_duration = 0.5;
+
     if(actuator == "Leg"){                         // Leg
       //   actuator_state = leg_joint_states;
         actuator_home_position = leg_home_position;
         actuator_joint_names = {"HipPitch", "HipRoll", "KneePitch"};
-        actuator_client = create_client(actuator_topic);
+        actuator_client = createClient(actuator_topic);
         if(actuator_client == NULL){
             return 0;
         }
@@ -1357,7 +1610,7 @@ int go_to_home(std::string actuator, std::string topics_filename, bool debug){
       //   actuator_state = head_joint_states;
         actuator_home_position = head_home_position;
         actuator_joint_names = {"HeadPitch", "HeadYaw"};
-        actuator_client = create_client(actuator_topic);
+        actuator_client = createClient(actuator_topic);
         if(actuator_client == NULL){
             return 0;
         }
@@ -1374,39 +1627,13 @@ int go_to_home(std::string actuator, std::string topics_filename, bool debug){
    //  compute_trajectory(actuator_state, actuator_home_position, actuator_state.size(), home_duration, positions_t, velocities_t, accelerations_t, duration_t);
 
     // Move the joints of the actuator depending on the interpolation means selected                                                  // Linear interpolation
-   move_to_position(actuator_client, actuator_joint_names, home_duration, open_hand, hand, hand_topic, "home", actuator_home_position);
+   moveToPosition(actuator_client, actuator_joint_names, home_duration, open_hand, hand, hand_topic, "home", actuator_home_position);
 
     return 1;
 
 
 }
 
-/*********************************************************************************
-
-setOdometryPose
-
-Initialize the pose returned by the callback that services the subscription to the odom topic         
-                                                                                                       
-Odometry provides relative position orientation. Since we can't assume what odometry data is published
-on the odom topic on start up, we use two extra sets of variables for the x, y, and theta values:     
-adjustment variables and current variables.                                                           
-                                                                                                      
-We set the values of the adjustment variables to be the difference between                            
-
-(a) the values associated with the start pose, and                                                    
-(b) the values published on the odom topic on start up (or whenever we reinitialize the odometry),    
-                                                                                                      
-The callback then sets the values of the current variables as follows.
-
-- the current x and y values are set to the sum of the adjustment x and y values and the odom x and y values 
-  (this effectively translates the odom x and y values by the adjustment x and y values) 
-
-- these translated values are then rotated about the Z axis by an angle equal to the difference 
-  between the start theta value  and the odom theta value
-
-- the current theta value is set to be the sum of the adjustment theta value and the odom theta value                                                            
-
-**********************************************************************************/
 
 void setOdometryPose(double x, double y, double theta)
 {
@@ -1426,8 +1653,6 @@ void setOdometryPose(double x, double y, double theta)
    adjustment_y = y - odom_y;
    adjustment_theta = theta - odom_theta;
 
-   // sleep(1); // allow time for adjusted  messages to be published on the odom topic
-   // ros::spinOnce();
 
    if (debug)
    {
@@ -1437,68 +1662,193 @@ void setOdometryPose(double x, double y, double theta)
 }
 
 
-int move_robot(double start_x, double start_y, double start_theta, double goal_x, double goal_y, double goal_theta, ros::Publisher velocity_publisher, ros::Rate rate, bool debug)
-{
+int moveRobot(double start_x, double start_y, double start_theta, double goal_x, double goal_y, double goal_theta, ros::Publisher velocity_publisher, ros::Rate rate, bool debug) {
+    
+    if (locomotionParameterData.robot_available == false) {
+        printf("No physical robot present\n");
+        return 0;
+    }
+    
+    if (valid_waypoints.size() == 0) {
+        printf("No waypoints available for navigation\n");
+        return 0;
+    }
+    
+    // Enhanced multi-waypoint navigation with smooth flow
+    return executeSmoothWaypointNavigation(start_x, start_y, start_theta, goal_x, goal_y, goal_theta, 
+                                         velocity_publisher, rate, debug);
+}
 
-   double                x_waypoint;
-   double                y_waypoint;
-   double                theta_waypoint;
-    /* Path planning is done, let's navigate */
-   /* ====================================  */
-
-   // If there is no physical robot, insert code to publish to simulator robot.
-   // For now, it just exits the program
-
-   if (locomotionParameterData.robot_available == false)
-   {
-      printf("No physical robot present\n");
-      return 0;
-   }
-
-   /* initialize the odometry */
-
-//    setOdometryPose(start_x, start_y, start_theta);
-   // ros::spin();
-   
-   /* 
-      Compute the waypoints in robot frame of reference and navigate using MIMO
-      Set waypointFlag to true so as to ensure that robot doesn't stop at waypoints and not worry about goal orientation yet
-    */
-   waypointFlag = true;
-
-   convert_pixel_to_world(valid_waypoints[0].x, valid_waypoints[0].y, x_waypoint, y_waypoint, room_width, room_height, image_width, image_height);
-   theta_waypoint = valid_waypoints[0].theta;
-   if(isnan(theta_waypoint)){
-      theta_waypoint = start_theta;
-   }
-//    printf("Valid waypoint = %.3f, %.3f, %.3f\n", x_waypoint, y_waypoint, theta_waypoint);
-//    goToPoseDQ(x_waypoint, y_waypoint, theta_waypoint, locomotionParameterData, velocity_publisher, rate);
-   goToPoseMIMO(x_waypoint, y_waypoint, theta_waypoint, locomotionParameterData, velocity_publisher, rate, waypointFlag);
-
-   for(int k = 1; k < valid_waypoints.size(); k++)
-   {
-      convert_pixel_to_world(valid_waypoints[k].x, valid_waypoints[k].y, x_waypoint, y_waypoint, room_width, room_height, image_width, image_height);
-      theta_waypoint = valid_waypoints[k].theta;
-      // if (debug)
-        //  printf("Valid waypoint = %.3f, %.3f, %.3f\n", x_waypoint, y_waypoint, theta_waypoint);
-
-      // goToPoseDQ(x_waypoint, y_waypoint, theta_waypoint, locomotionParameterData, velocity_publisher, rate);
-      goToPoseMIMO(x_waypoint, y_waypoint, theta_waypoint, locomotionParameterData, velocity_publisher, rate, waypointFlag);
-   }
-   // Robot arrived at destination (or one waypoint before destination)
-   // Then navigate to the final goal pose
-   // Set waypointFlag to false to enable robot stop at final destination and correct final orientation to the goal orientation
-   waypointFlag = false;
-        // printf("Valid waypoint = %.3f, %.3f, %.3f\n", goal_x, goal_y, goal_theta);
-   // // goToPoseMIMO(goal_x, goal_y, goal_theta, locomotionParameterData, velocity_publisher, rate, waypointFlag);
-   goToPoseDQ(goal_x, goal_y, goal_theta, locomotionParameterData, velocity_publisher, rate);
-
-   return 1;
-
+// New function for smooth waypoint navigation
+int executeSmoothWaypointNavigation(double start_x, double start_y, double start_theta, 
+                                   double goal_x, double goal_y, double goal_theta,
+                                   ros::Publisher velocity_publisher, ros::Rate rate, bool debug) {
+    
+    geometry_msgs::Twist msg;
+    
+    // Navigation parameters
+    const double WAYPOINT_APPROACH_RADIUS = 0.25;  // Distance to start transitioning to next waypoint
+    const double WAYPOINT_CAPTURE_RADIUS = 0.15;   // Distance to consider waypoint reached
+    const double LOOKAHEAD_DISTANCE = 0.4;         // How far ahead to look for path planning
+    const double MAX_LINEAR_VEL = locomotionParameterData.max_linear_velocity * 0.9;
+    const double MAX_ANGULAR_VEL = locomotionParameterData.max_angular_velocity * 0.9;
+    const double MIN_LINEAR_VEL = locomotionParameterData.min_linear_velocity;
+    const double MIN_ANGULAR_VEL = locomotionParameterData.min_angular_velocity;
+    
+    // State variables
+    int current_waypoint_idx = 0;
+    double current_linear_velocity = 0.0;
+    double current_angular_velocity = 0.0;
+    bool navigation_complete = false;
+    
+    // Conversion helper for waypoints
+    auto getWaypointWorldCoords = [&](int idx) -> std::tuple<double, double, double> {
+        if (idx >= valid_waypoints.size()) return std::make_tuple(goal_x, goal_y, goal_theta);
+        
+        double world_x, world_y;
+        convertPixelToWorld(valid_waypoints[idx].x, valid_waypoints[idx].y, world_x, world_y, 
+                          room_width, room_height, image_width, image_height);
+        return std::make_tuple(world_x, world_y, valid_waypoints[idx].theta);
+    };
+    
+    if (debug) {
+        printf("Starting smooth waypoint navigation with %zu waypoints\n", valid_waypoints.size());
+    }
+    
+    while (!navigation_complete && ros::ok()) {
+        ros::spinOnce();  // Update current pose
+        
+        // Get current target waypoint
+        auto [target_x, target_y, target_theta] = getWaypointWorldCoords(current_waypoint_idx);
+        
+        // Calculate distance to current waypoint
+        double distance_to_waypoint = sqrt(pow(target_x - current_x, 2) + pow(target_y - current_y, 2));
+        
+        // Check if we should advance to next waypoint
+        if (distance_to_waypoint < WAYPOINT_CAPTURE_RADIUS) {
+            current_waypoint_idx++;
+            if (current_waypoint_idx >= valid_waypoints.size()) {
+                // Navigate to final goal with precise positioning
+                navigation_complete = true;
+                break;
+            }
+            
+            if (debug) {
+                printf("Advanced to waypoint %d\n", current_waypoint_idx);
+            }
+            continue;
+        }
+        
+        // Predictive navigation: look ahead to next waypoint for smooth transitions
+        double lookahead_x = target_x;
+        double lookahead_y = target_y;
+        double lookahead_weight = 0.0;
+        
+        if (current_waypoint_idx + 1 < valid_waypoints.size() && distance_to_waypoint < WAYPOINT_APPROACH_RADIUS) {
+            auto [next_x, next_y, next_theta] = getWaypointWorldCoords(current_waypoint_idx + 1);
+            
+            // Calculate blend factor based on distance to current waypoint
+            lookahead_weight = 1.0 - (distance_to_waypoint / WAYPOINT_APPROACH_RADIUS);
+            lookahead_weight = std::min(0.6, lookahead_weight);  // Limit influence
+            
+            // Blend current and next waypoint for smooth curve
+            lookahead_x = target_x * (1.0 - lookahead_weight) + next_x * lookahead_weight;
+            lookahead_y = target_y * (1.0 - lookahead_weight) + next_y * lookahead_weight;
+            
+            if (debug && lookahead_weight > 0.1) {
+                printf("Blending waypoints: weight=%.2f, target=(%.2f,%.2f), lookahead=(%.2f,%.2f)\n", 
+                       lookahead_weight, target_x, target_y, lookahead_x, lookahead_y);
+            }
+        }
+        
+        // Calculate navigation vectors
+        double goal_direction = atan2(lookahead_y - current_y, lookahead_x - current_x);
+        double angle_error = goal_direction - current_theta;
+        
+        // Normalize angle error
+        while (angle_error > M_PI) angle_error -= 2 * M_PI;
+        while (angle_error < -M_PI) angle_error += 2 * M_PI;
+        
+        // Velocity calculation with smooth acceleration/deceleration
+        double target_linear_vel = MAX_LINEAR_VEL;
+        
+        // Reduce speed for tight turns
+        double turn_factor = 1.0 - std::min(1.0, std::abs(angle_error) / (M_PI/3));
+        target_linear_vel *= (0.4 + 0.6 * turn_factor);  // Never go below 40% speed
+        
+        // Reduce speed when approaching waypoints (except when blending)
+        if (lookahead_weight < 0.3) {  // Not in blending mode
+            double approach_factor = std::min(1.0, distance_to_waypoint / WAYPOINT_APPROACH_RADIUS);
+            target_linear_vel *= (0.5 + 0.5 * approach_factor);  // Minimum 50% speed
+        }
+        
+        target_linear_vel = std::max(target_linear_vel, MIN_LINEAR_VEL);
+        
+        // Angular velocity calculation
+        double target_angular_vel = locomotionParameterData.angle_gain_dq * angle_error;
+        target_angular_vel = std::max(std::min(target_angular_vel, MAX_ANGULAR_VEL), -MAX_ANGULAR_VEL);
+        
+        if (std::abs(target_angular_vel) < MIN_ANGULAR_VEL && std::abs(angle_error) > 0.05) {
+            target_angular_vel = MIN_ANGULAR_VEL * ((target_angular_vel >= 0) ? 1 : -1);
+        }
+        
+        // Smooth acceleration limits
+        double accel_limit = 0.15;
+        double angular_accel_limit = 0.2;
+        
+        // Apply acceleration limits for smooth motion
+        double linear_vel_diff = target_linear_vel - current_linear_velocity;
+        if (std::abs(linear_vel_diff) > accel_limit) {
+            current_linear_velocity += accel_limit * ((linear_vel_diff > 0) ? 1 : -1);
+        } else {
+            current_linear_velocity = target_linear_vel;
+        }
+        
+        double angular_vel_diff = target_angular_vel - current_angular_velocity;
+        if (std::abs(angular_vel_diff) > angular_accel_limit) {
+            current_angular_velocity += angular_accel_limit * ((angular_vel_diff > 0) ? 1 : -1);
+        } else {
+            current_angular_velocity = target_angular_vel;
+        }
+        
+        // Publish velocity commands
+        msg.linear.x = current_linear_velocity;
+        msg.angular.z = current_angular_velocity;
+        velocity_publisher.publish(msg);
+        
+        if (debug) {
+            printf("WP %d: dist=%.2f, angle_err=%.2f, lin_vel=%.2f, ang_vel=%.2f, blend=%.2f\n", 
+                   current_waypoint_idx, distance_to_waypoint, angle_error, 
+                   current_linear_velocity, current_angular_velocity, lookahead_weight);
+        }
+        
+        rate.sleep();
+    }
+    
+    // Final precise navigation to goal
+    if (navigation_complete) {
+        if (debug) {
+            printf("Executing final precision navigation to goal\n");
+        }
+        
+        // Use the improved single-point navigation for final approach
+        goToPoseDQ(goal_x, goal_y, goal_theta, locomotionParameterData, velocity_publisher, rate);
+    }
+    
+    // Ensure complete stop
+    msg.linear.x = 0.0;
+    msg.angular.z = 0.0;
+    velocity_publisher.publish(msg);
+    
+    if (debug) {
+        printf("Smooth waypoint navigation completed successfully\n");
+    }
+    
+    return 1;
 }
 
 
-void save_waypoint_map(vector<int> compressionParams, Mat mapImageLarge, string fileName){
+void saveWaypointMap(vector<int> compressionParams, Mat mapImageLarge, string fileName){
     char path_and_input_filename[MAX_FILENAME_LENGTH]        = "";
     std::string navigation_pathway_filename = fileName;  // name of the output pathway image
 
@@ -1512,15 +1862,158 @@ void save_waypoint_map(vector<int> compressionParams, Mat mapImageLarge, string 
     //imshow(mapWindowName, mapImageLarge); // Display map image
 }
 
-/******************************************************************************
 
-goToPoseDQ
+void goToPoseDQ(double x, double y, double theta, locomotionParameterDataType locomotionParameterData, ros::Publisher pub, ros::Rate rate) {
+    // This is now a wrapper that calls the new smooth locomotion system
+    // with single-waypoint mode for backward compatibility
+    
+    bool debug = false;
+    geometry_msgs::Twist msg;
+    
+    double goal_x = x;
+    double goal_y = y;
+    double goal_theta = theta;
+    
+    // Enhanced smooth motion parameters
+    const double APPROACH_DISTANCE_THRESHOLD = 0.15;  // Distance to start slowing down
+    const double POSITION_TOLERANCE = locomotionParameterData.position_tolerance_goal;
+    const double ANGLE_TOLERANCE = locomotionParameterData.angle_tolerance_orienting;
+    const double MAX_LINEAR_VEL = locomotionParameterData.max_linear_velocity * 0.8;  // Slightly reduced for smoothness
+    const double MAX_ANGULAR_VEL = locomotionParameterData.max_angular_velocity * 0.8;
+    const double MIN_LINEAR_VEL = locomotionParameterData.min_linear_velocity;
+    const double MIN_ANGULAR_VEL = locomotionParameterData.min_angular_velocity;
+    
+    // State variables for smooth motion
+    double current_linear_velocity = 0.0;
+    double current_angular_velocity = 0.0;
+    double position_error = 0.0;
+    double angle_error = 0.0;
+    
+    // Motion phases
+    enum MotionPhase { APPROACHING, FINE_POSITIONING, FINAL_ORIENTATION, COMPLETED };
+    MotionPhase phase = APPROACHING;
+    
+    while (phase != COMPLETED && ros::ok()) {
+        ros::spinOnce();  // Update current pose
+        
+        // Calculate current errors
+        position_error = sqrt(pow(goal_x - current_x, 2) + pow(goal_y - current_y, 2));
+        
+        if (phase == APPROACHING || phase == FINE_POSITIONING) {
+            // Calculate direction to goal
+            double goal_direction = atan2(goal_y - current_y, goal_x - current_x);
+            angle_error = goal_direction - current_theta;
+            
+            // Normalize angle error
+            while (angle_error > M_PI) angle_error -= 2 * M_PI;
+            while (angle_error < -M_PI) angle_error += 2 * M_PI;
+            
+            // Check if we should transition to final orientation
+            if (position_error <= POSITION_TOLERANCE) {
+                phase = FINAL_ORIENTATION;
+                continue;
+            }
+            
+            // Smooth velocity control with distance-based scaling
+            double distance_scale = std::min(1.0, position_error / APPROACH_DISTANCE_THRESHOLD);
+            double angular_scale = 1.0 - std::min(1.0, std::abs(angle_error) / (M_PI/4));  // Reduce linear velocity for large turns
+            
+            // Calculate target velocities
+            double target_linear_vel = MAX_LINEAR_VEL * distance_scale * angular_scale;
+            target_linear_vel = std::max(target_linear_vel, MIN_LINEAR_VEL);
+            
+            double target_angular_vel = locomotionParameterData.angle_gain_dq * angle_error;
+            target_angular_vel = std::max(std::min(target_angular_vel, MAX_ANGULAR_VEL), -MAX_ANGULAR_VEL);
+            if (std::abs(target_angular_vel) < MIN_ANGULAR_VEL && std::abs(angle_error) > 0.05) {
+                target_angular_vel = MIN_ANGULAR_VEL * ((target_angular_vel >= 0) ? 1 : -1);
+            }
+            
+            // Smooth acceleration/deceleration
+            double linear_accel = 0.1;  // Acceleration factor
+            double angular_accel = 0.15;
+            
+            if (target_linear_vel > current_linear_velocity) {
+                current_linear_velocity += linear_accel;
+                current_linear_velocity = std::min(current_linear_velocity, target_linear_vel);
+            } else {
+                current_linear_velocity -= linear_accel;
+                current_linear_velocity = std::max(current_linear_velocity, target_linear_vel);
+            }
+            
+            if (target_angular_vel > current_angular_velocity) {
+                current_angular_velocity += angular_accel;
+                current_angular_velocity = std::min(current_angular_velocity, target_angular_vel);
+            } else {
+                current_angular_velocity -= angular_accel;
+                current_angular_velocity = std::max(current_angular_velocity, target_angular_vel);
+            }
+            
+            msg.linear.x = current_linear_velocity;
+            msg.angular.z = current_angular_velocity;
+            
+            if (debug) {
+                printf("Smooth approach - Pos error: %.3f, Angle error: %.3f, Lin vel: %.3f, Ang vel: %.3f\n", 
+                       position_error, angle_error, current_linear_velocity, current_angular_velocity);
+            }
+            
+        } else if (phase == FINAL_ORIENTATION) {
+            // Final orientation adjustment
+            angle_error = theta - current_theta;
+            
+            // Normalize angle error
+            while (angle_error > M_PI) angle_error -= 2 * M_PI;
+            while (angle_error < -M_PI) angle_error += 2 * M_PI;
+            
+            if (std::abs(angle_error) <= ANGLE_TOLERANCE) {
+                phase = COMPLETED;
+                continue;
+            }
+            
+            // Stop linear motion, smooth angular adjustment
+            current_linear_velocity *= 0.9;  // Gradual stop
+            if (current_linear_velocity < 0.01) current_linear_velocity = 0.0;
+            
+            double target_angular_vel = locomotionParameterData.angle_gain_dq * angle_error * 0.8;  // Slightly gentler
+            target_angular_vel = std::max(std::min(target_angular_vel, MAX_ANGULAR_VEL), -MAX_ANGULAR_VEL);
+            
+            if (std::abs(target_angular_vel) < MIN_ANGULAR_VEL && std::abs(angle_error) > ANGLE_TOLERANCE) {
+                target_angular_vel = MIN_ANGULAR_VEL * ((target_angular_vel >= 0) ? 1 : -1);
+            }
+            
+            // Smooth angular deceleration as we approach target
+            if (std::abs(angle_error) < 0.2) {  // Within ~11 degrees
+                target_angular_vel *= (std::abs(angle_error) / 0.2);
+            }
+            
+            current_angular_velocity = target_angular_vel;
+            
+            msg.linear.x = current_linear_velocity;
+            msg.angular.z = current_angular_velocity;
+            
+            if (debug) {
+                printf("Final orientation - Angle error: %.3f, Ang vel: %.3f\n", 
+                       angle_error, current_angular_velocity);
+            }
+        }
+        
+        pub.publish(msg);
+        rate.sleep();
+    }
+    
+    // Ensure complete stop
+    msg.linear.x = 0.0;
+    msg.angular.z = 0.0;
+    pub.publish(msg);
+    
+    if (debug) {
+        printf("Smooth locomotion completed - Final pos error: %.3f, Final angle error: %.3f\n", 
+               position_error, angle_error);
+    }
+}
 
-Use the divide and conquer algorithm to drive the robot to a given pose
 
-*******************************************************************************/
 
-void goToPoseDQ(double x, double y, double theta, locomotionParameterDataType locomotionParameterData, ros::Publisher pub, ros::Rate rate)
+void goToPoseDQFunctional(double x, double y, double theta, locomotionParameterDataType locomotionParameterData, ros::Publisher pub, ros::Rate rate)
 {
 
    bool debug = false;
@@ -1554,10 +2047,7 @@ void goToPoseDQ(double x, double y, double theta, locomotionParameterDataType lo
 
    mode = ORIENTING; // divide and conquer always starts by adjusing the heading
 
-   position_error = sqrt((goal_x - current_x) * (goal_x - current_x) +
-                            (goal_y - current_y) * (goal_y - current_y));
-
-   while ((position_error > locomotionParameterData.position_tolerance_goal) && ros::ok())
+   do
    {
 
       /* get the current pose */
@@ -1672,13 +2162,12 @@ void goToPoseDQ(double x, double y, double theta, locomotionParameterDataType lo
 
       rate.sleep(); // Wait until it's time for another iteration
 
-   }
+   } while ((position_error > locomotionParameterData.position_tolerance_goal) && ros::ok());
 
    /* the robot has reached the destination so             */
    /* adjust the orientation to match the goal orientation */
-    angle_error = goal_theta - current_theta;
 
-   while ((fabs(angle_error) > locomotionParameterData.angle_tolerance_orienting) && ros::ok())
+   do
    {
 
       if (debug)
@@ -1733,7 +2222,7 @@ void goToPoseDQ(double x, double y, double theta, locomotionParameterDataType lo
          rate.sleep(); // Wait until it's time for another iteration
       }
 
-   }
+   } while ((fabs(angle_error) > locomotionParameterData.angle_tolerance_orienting) && ros::ok());
 
    msg.linear.x = 0;
    msg.angular.z = 0;
@@ -1745,7 +2234,236 @@ void goToPoseDQ(double x, double y, double theta, locomotionParameterDataType lo
 }
 
 
-void stabilize_waist()
+/******************************************************************************
+
+goToPoseDQ
+
+Use the divide and conquer algorithm to drive the robot to a given pose
+
+*******************************************************************************/
+
+void goToPoseDQOld(double x, double y, double theta, locomotionParameterDataType locomotionParameterData, ros::Publisher pub, ros::Rate rate)
+{
+
+   bool debug = false;
+
+   geometry_msgs::Twist msg;
+
+   double start_x;
+   double start_y;
+   double start_theta;
+
+   double goal_x;
+   double goal_y;
+   double goal_theta;
+
+   double goal_direction;
+
+   double position_error;
+   double angle_error;
+
+   double angular_velocity;
+   double linear_velocity;
+   double current_linear_velocity = 0;
+
+   int number_of_ramp_up_steps = 20;
+
+   int mode; // GOING or ORIENTING
+
+   goal_x = x;
+   goal_y = y;
+   goal_theta = theta;
+
+   mode = ORIENTING; // divide and conquer always starts by adjusing the heading
+
+   do
+   {
+
+      /* get the current pose */
+
+      ros::spinOnce(); // Let ROS take over to handle the callback and publish the pose on the odom topic
+
+      position_error = sqrt((goal_x - current_x) * (goal_x - current_x) +
+                            (goal_y - current_y) * (goal_y - current_y));
+
+      goal_direction = atan2((goal_y - current_y), (goal_x - current_x));
+      // printf("Current theta %.3f\n", current_theta);
+      angle_error = goal_direction - current_theta;
+
+      /* The absolute error in direction can not be greater than Pi because the robot can rotate in two directions,             */
+      /* positive and negative. Thus it can eliminate any angular error by rotating Pi radians or less in the correct direction */
+      /* If the difference in directions is greater than +Pi, subtract  2 Pi; if it is less than -Pi, add 2 Pi                  */
+
+      if (angle_error > PI)
+      {
+         angle_error = angle_error - 2 * PI;
+      }
+      else if (angle_error < -PI)
+      {
+         angle_error = angle_error + 2 * PI;
+      }
+
+      // if (fabs(angle_error) > locomotionParameterData.angle_tolerance_orienting) {
+      if (((mode == ORIENTING) && (fabs(angle_error) > locomotionParameterData.angle_tolerance_orienting)) || // low angular tolerance when orienting to get the best initial heading
+          ((mode == GOING) && (fabs(angle_error) > locomotionParameterData.angle_tolerance_going)))
+      { // high angular tolerance when going so we don't have to correct the heading too often
+
+         /* if the robot is not oriented correctly, adjust the heading */
+
+         if (debug)
+            printf("Orienting\n");
+
+         mode = ORIENTING; // reset mode from GOING to ORIENTING to ensure we use the lower angular tolerance when reorienting
+
+         /* set linear and angular velocities, taking care not to use values that exceed maximum values */
+         /* or use values that are less than minimum values needed to produce a response in the robot   */
+
+         msg.linear.x = 0;
+
+         angular_velocity = locomotionParameterData.angle_gain_dq * angle_error;
+
+         if (fabs(angular_velocity) < locomotionParameterData.min_angular_velocity)
+            msg.angular.z = locomotionParameterData.min_angular_velocity * signnum(angular_velocity);
+         else if (fabs(angular_velocity) > locomotionParameterData.max_angular_velocity)
+            msg.angular.z = locomotionParameterData.max_angular_velocity * signnum(angular_velocity);
+         else
+            msg.angular.z = angular_velocity;
+      }
+      else if (position_error > locomotionParameterData.position_tolerance)
+      {
+
+         mode = GOING;
+
+         /* if the robot has not reached the goal, adjust the distance */
+
+         if (debug)
+            printf("Going\n");
+
+         /* set linear and angular velocities, taking care not to use values that exceed maximum values */
+         /* or use values that are less than minimum values needed to produce a response in the robot   */
+
+         linear_velocity = locomotionParameterData.position_gain_dq * position_error;
+
+         if (linear_velocity < locomotionParameterData.min_linear_velocity)
+            linear_velocity = locomotionParameterData.min_linear_velocity;
+         else if (linear_velocity > locomotionParameterData.max_linear_velocity)
+            linear_velocity = locomotionParameterData.max_linear_velocity;
+
+         /* if stopped, ramp up to the required velocity ... don't attempt an infinite acceleration to the required velocity */
+
+         if (current_linear_velocity == 0)
+         {
+
+            for (int i = 1; i < number_of_ramp_up_steps; i++)
+            {
+                msg.linear.x = (double)linear_velocity * ((double)i / (double)number_of_ramp_up_steps);
+                msg.angular.z = 0;
+
+                if (debug)
+                {
+         printf("Ramping up velocity\n");
+         // printf("Current pose:         %5.3f %5.3f %5.3f\n", current_x, current_y, current_theta);
+         // printf("Goal, heading, theta: %5.3f, %5.3f, %5.3f\n", goal_theta, goal_direction, current_theta);
+         printf("Error:                %5.3f, %5.3f\n", position_error, angle_error);
+         printf("velocity command:     %5.3f, %5.3f\n", msg.linear.x, msg.angular.z);
+                }
+
+                pub.publish(msg); // Publish the message
+
+                rate.sleep(); // Wait until it's time for another iteration
+            }
+            current_linear_velocity = linear_velocity;
+         }
+
+         msg.linear.x = linear_velocity;
+         msg.angular.z = 0;
+      }
+
+      if (debug)
+      {
+         // printf("Current pose:         %5.3f %5.3f %5.3f\n", current_x, current_y, current_theta);
+         // printf("Goal, heading, theta: %5.3f, %5.3f, %5.3f\n", goal_theta, goal_direction, current_theta);
+         printf("Error:                %5.3f, %5.3f\n", position_error, angle_error);
+         printf("velocity command:     %5.3f, %5.3f\n\n", msg.linear.x, msg.angular.z);
+      }
+
+      pub.publish(msg); // Publish the message
+
+      rate.sleep(); // Wait until it's time for another iteration
+
+   } while ((position_error > locomotionParameterData.position_tolerance) && ros::ok());
+
+   /* the robot has reached the destination so             */
+   /* adjust the orientation to match the goal orientation */
+
+   do
+   {
+
+      if (debug)
+         printf("Orienting\n");
+
+      /* get the current pose */
+
+      ros::spinOnce(); // Let ROS take over to handle the callback
+
+      angle_error = goal_theta - current_theta;
+
+      /* The absolute error in direction can not be greater than Pi because the robot can rotate in two directions,            */
+      /* positive and negative. Thus it can eliminate any angular error by rotating Pi radian or less in the correct direction */
+      /* If the difference in directions is greater than +Pi, subtract  2 Pi; if it is less than -Pi, add 2 Pi                 */
+
+      if (angle_error > PI)
+      {
+         angle_error = angle_error - 2 * PI;
+      }
+      else if (angle_error < -PI)
+      {
+         angle_error = angle_error + 2 * PI;
+      }
+
+      msg.linear.x = 0;
+
+      /* set linear and angular velocities, taking care not to use values that exceed maximum values */
+      /* or use values that are less than minimum values needed to produce a response in the robot   */
+
+      angular_velocity = locomotionParameterData.angle_gain_dq * angle_error;
+
+      if (fabs(angular_velocity) < locomotionParameterData.min_angular_velocity)
+         msg.angular.z = locomotionParameterData.min_angular_velocity * signnum(angular_velocity);
+      else if (fabs(angular_velocity) > locomotionParameterData.max_angular_velocity)
+         msg.angular.z = locomotionParameterData.max_angular_velocity * signnum(angular_velocity);
+      else
+         msg.angular.z = angular_velocity;
+
+      if (debug)
+      {
+         printf("Orienting\n");
+         // printf("Current pose:         %5.3f %5.3f %5.3f\n", current_x, current_y, current_theta);
+         // printf("Goal, heading, theta: %5.3f, %5.3f, %5.3f\n", goal_theta, goal_direction, current_theta);
+         printf("Error:                %5.3f, %5.3f\n", position_error, angle_error);
+         printf("velocity command:     %5.3f, %5.3f\n\n", msg.linear.x, msg.angular.z);
+      }
+
+      if((fabs(angle_error) > locomotionParameterData.angle_tolerance_orienting)){
+
+         pub.publish(msg); // Publish the message
+
+         rate.sleep(); // Wait until it's time for another iteration
+      }
+
+   } while ((fabs(angle_error) > locomotionParameterData.angle_tolerance_orienting) && ros::ok());
+
+   msg.linear.x = 0;
+   msg.angular.z = 0;
+
+   pub.publish(msg); // Publish the message
+   rate.sleep(); // Wait until it's time for another iteration
+
+
+}
+
+
+void stabilizeWaist()
 {
     naoqi_bridge_msgs::JointAnglesWithSpeed msg;
     msg.joint_names.push_back("HipRoll");
@@ -1759,37 +2477,240 @@ void stabilize_waist()
 
     navigation_pelvis_publisher.publish(msg);
 
-      // trajectory_msgs::JointTrajectory trajectory_msg;
-      // trajectory_msg.joint_names.push_back("HipPitch");
-      // trajectory_msg.joint_names.push_back("HipRoll");
-      // trajectory_msg.joint_names.push_back("KneePitch");
-
-      // trajectory_msgs::JointTrajectoryPoint trajectory_msg_point;
-      // trajectory_msg_point.positions.push_back(-0.5);
-      // trajectory_msg_point.positions.push_back(0.0);
-      // trajectory_msg_point.positions.push_back(0.0);
-
-      // trajectory_msg_point.time_from_start = ros::Duration(0.5);
-
-      // trajectory_msg.points.push_back(trajectory_msg_point);
-
-      // navigation_pelvis_publisher.publish(trajectory_msg);
 }
 
-void stabilize_waist_continuously()
+void stabilizeWaistContinuously()
 {
     ros::Rate rate(10);  // Adjust the rate as needed
     while (ros::ok())
     {
       //   if (is_moving)
         {
-            stabilize_waist();
+            stabilizeWaist();
         }
         rate.sleep();
     }
 }
 
+/**********************************************************************************************************************
 
+goToPoseMIMO
+
+Use the MIMO algorithm to drive the robot to a given position and then adjust orientation to achieve the required  pose
+
+***********************************************************************************************************************/
+
+ void goToPoseMIMONew(double x, double y, double theta, locomotionParameterDataType locomotionParameterData, ros::Publisher pub, ros::Rate rate, bool waypoints)
+ {
+
+   bool debug = false;
+
+   geometry_msgs::Twist msg;
+
+    naoqi_bridge_msgs::JointAnglesWithSpeed pelvis_msg;
+   //  pelvis_msg.joint_names.push_back("HipRoll");
+   //  pelvis_msg.joint_angles.push_back(0.0);  // Set hip pitch to 0 (upright position)
+    pelvis_msg.joint_names.push_back("HipPitch");
+    pelvis_msg.joint_angles.push_back(0.0);  // Set hip roll to 0 (upright position)
+   //  pelvis_msg.joint_names.push_back("KneePitch");
+   //  pelvis_msg.joint_angles.push_back(0.0);  // Set knee pitch to 0 (upright position)
+    pelvis_msg.speed = 1.0;  // Adjust speed as needed
+    pelvis_msg.relative = 0;  // Absolute position
+
+
+   double start_x;
+   double start_y;
+   double start_theta;
+
+   double goal_x;
+   double goal_y;
+   double goal_theta;
+
+   double goal_direction;
+
+   double position_error;
+   double angle_error;
+
+   double angular_velocity;
+   double linear_velocity;
+
+   static double current_linear_velocity = 0; // make this static so that it's valid on the next call
+
+   int number_of_ramp_up_steps = 20;
+
+   goal_x = x;
+   goal_y = y;
+   goal_theta = theta;
+
+   do
+   {
+
+     /* get the current pose */
+
+     ros::spinOnce(); // Let ROS take over to handle the callback
+
+     position_error = sqrt((goal_x - current_x) * (goal_x - current_x) +
+                           (goal_y - current_y) * (goal_y - current_y));
+
+     goal_direction = atan2((goal_y - current_y), (goal_x - current_x));
+     angle_error = goal_direction - current_theta;
+
+     /* The absolute error in direction can not be greater than Pi because the robot can rotate in two directions,            */
+     /* positive and negative. Thus it can eliminate any angular error by rotating Pi radian or less in the correct direction */
+     /* If the difference in directions is greater than +Pi, subtract  2 Pi; if it is less than -Pi, add 2 Pi                 */
+
+     if (angle_error > PI)
+     {
+         angle_error = angle_error - 2 * PI;
+     }
+     else if (angle_error < -PI)
+     {
+         angle_error = angle_error + 2 * PI;
+     }
+
+     /* set linear and angular velocities, taking care not to use values that exceed maximum values */
+     /* or use values that are less than minimum values needed to produce a response in the robot   */
+
+     angular_velocity = locomotionParameterData.angle_gain_mimo * angle_error;
+
+     if (fabs(angular_velocity) < locomotionParameterData.min_angular_velocity)
+         msg.angular.z = locomotionParameterData.min_angular_velocity * signnum(angular_velocity);
+     else if (fabs(angular_velocity) > locomotionParameterData.max_angular_velocity)
+         msg.angular.z = locomotionParameterData.max_angular_velocity * signnum(angular_velocity);
+     else
+         msg.angular.z = angular_velocity;
+
+     /* don't slow down if driving to a waypoint */
+
+     if (waypoints)
+     {
+         linear_velocity = locomotionParameterData.max_linear_velocity / 2;
+     }
+     else
+     {
+         linear_velocity = locomotionParameterData.position_gain_mimo * position_error;
+     }
+
+     if (linear_velocity < locomotionParameterData.min_linear_velocity)
+         msg.linear.x = locomotionParameterData.min_linear_velocity;
+     else if (linear_velocity > locomotionParameterData.max_linear_velocity)
+         msg.linear.x = locomotionParameterData.max_linear_velocity;
+
+     /* if currently stopped, ramp up to the required velocity ... don't attempt an infinite acceleration to the required velocity */
+
+     if (current_linear_velocity == 0)
+     {
+
+         for (int i = 1; i < number_of_ramp_up_steps; i++)
+         {
+      msg.linear.x = (double)linear_velocity * ((double)i / (double)number_of_ramp_up_steps);
+      msg.angular.z = 0;
+
+      if (debug)
+      {
+              printf("Ramping up velocity\n");
+              // printf("Current pose:         %5.3f %5.3f %5.3f\n", current_x, current_y, current_theta);
+              // printf("Goal, heading, theta: %5.3f, %5.3f, %5.3f\n", goal_theta, goal_direction, current_theta);
+              printf("Error:                %5.3f, %5.3f\n", position_error, angle_error);
+              printf("velocity command:     %5.3f, %5.3f\n\n", msg.linear.x, msg.angular.z);
+      }
+
+      navigation_pelvis_publisher.publish(pelvis_msg);
+      pub.publish(msg); // Publish the message
+      is_moving = true;
+      // navigation_pelvis_publisher.publish(trajectory_msg);
+
+      rate.sleep(); // Wait until it's time for another iteration
+         }
+         current_linear_velocity = linear_velocity;
+     }
+
+     msg.linear.x = linear_velocity;
+
+     if (debug)
+     {
+         printf("Going\n");
+         // printf("Current pose:         %5.3f %5.3f %5.3f\n", current_x, current_y, current_theta);
+         // printf("Goal, heading, theta: %5.3f, %5.3f, %5.3f\n", goal_theta, goal_direction, current_theta);
+         printf("Error:                %5.3f, %5.3f\n", position_error, angle_error);
+         printf("velocity command:     %5.3f, %5.3f\n\n", msg.linear.x, msg.angular.z);
+     }
+
+      is_moving = true;
+      navigation_pelvis_publisher.publish(pelvis_msg);
+     pub.publish(msg); // Publish the message
+   //   navigation_pelvis_publisher.publish(trajectory_msg);
+
+     rate.sleep(); // Wait until it's time for another iteration
+
+   } while ((fabs(position_error) > locomotionParameterData.position_tolerance) && ros::ok());
+
+   /* for the final destination, adjust the orientation to match the goal pose */
+   /* ------------------------------------------------------------------------ */
+
+   if (!waypoints)
+   {
+
+     do
+     {
+
+         /* if the robot has reached the destination             */
+         /* adjust the orientation to match the goal orientation */
+
+         /* get the current pose */
+
+         ros::spinOnce(); // Let ROS take over to handle the callback
+
+         /* set linear and angular velocities, taking care not to use values that exceed maximum values */
+         /* or use values that are less than minimum values needed to produce a response in the robot   */
+
+         angle_error = goal_theta - current_theta;
+
+         current_linear_velocity = 0;
+         msg.linear.x = current_linear_velocity;
+
+         angular_velocity = locomotionParameterData.angle_gain_mimo * angle_error;
+
+         if (fabs(angular_velocity) < locomotionParameterData.min_angular_velocity)
+      msg.angular.z = locomotionParameterData.min_angular_velocity * signnum(angular_velocity);
+         else if (fabs(angular_velocity) > locomotionParameterData.max_angular_velocity)
+      msg.angular.z = locomotionParameterData.max_angular_velocity * signnum(angular_velocity);
+         else
+      msg.angular.z = angular_velocity;
+
+         if (debug)
+         {
+      printf("Orienting\n");
+      // printf("Current pose:         %5.3f %5.3f %5.3f\n", current_x, current_y, current_theta);
+      // printf("Goal, heading, theta: %5.3f, %5.3f, %5.3f\n", goal_theta, goal_direction, current_theta);
+      printf("Error:                %5.3f, %5.3f\n", position_error, angle_error);
+      printf("velocity command:     %5.3f, %5.3f\n\n", msg.linear.x, msg.angular.z);
+         }
+
+         is_moving = true;
+         navigation_pelvis_publisher.publish(pelvis_msg);
+         pub.publish(msg); // Publish the message
+         // navigation_pelvis_publisher.publish(trajectory_msg);
+
+         rate.sleep(); // Wait until it's time for another iteration
+
+     } while ((fabs(angle_error) > locomotionParameterData.angle_tolerance_orienting) && ros::ok());
+
+      current_linear_velocity = 0;
+      msg.linear.x = current_linear_velocity;
+
+      angular_velocity = 0;
+      msg.angular.z = angular_velocity;
+
+      navigation_pelvis_publisher.publish(pelvis_msg);
+      pub.publish(msg); // Publish the message
+      is_moving = false;
+      // navigation_pelvis_publisher.publish(trajectory_msg);
+
+      rate.sleep(); // Wait until it's time for another iteration
+
+   }
+ }
 
 
 void goToPoseMIMO(double x, double y, double theta, locomotionParameterDataType locomotionParameterData, ros::Publisher pub, ros::Rate rate, bool waypoints)
@@ -1984,6 +2905,199 @@ void goToPoseMIMO(double x, double y, double theta, locomotionParameterDataType 
 
    }
  }
+
+
+
+void goToPoseMIMOFunctional(double x, double y, double theta, locomotionParameterDataType locomotionParameterData, ros::Publisher pub, ros::Rate rate, bool waypoints)
+ {
+
+   bool debug = false;
+
+   geometry_msgs::Twist msg;
+
+   double start_x;
+   double start_y;
+   double start_theta;
+
+   double goal_x;
+   double goal_y;
+   double goal_theta;
+
+   double goal_direction;
+
+   double position_error;
+   double angle_error;
+
+   double angular_velocity;
+   double linear_velocity;
+
+   static double current_linear_velocity = 0; // make this static so that it's valid on the next call
+
+   int number_of_ramp_up_steps = 20;
+
+   goal_x = x;
+   goal_y = y;
+   goal_theta = theta;
+
+   do
+   {
+
+     /* get the current pose */
+
+     ros::spinOnce(); // Let ROS take over to handle the callback
+
+     position_error = sqrt((goal_x - current_x) * (goal_x - current_x) +
+                           (goal_y - current_y) * (goal_y - current_y));
+
+     goal_direction = atan2((goal_y - current_y), (goal_x - current_x));
+     angle_error = goal_direction - current_theta;
+
+     /* The absolute error in direction can not be greater than Pi because the robot can rotate in two directions,            */
+     /* positive and negative. Thus it can eliminate any angular error by rotating Pi radian or less in the correct direction */
+     /* If the difference in directions is greater than +Pi, subtract  2 Pi; if it is less than -Pi, add 2 Pi                 */
+
+     if (angle_error > PI)
+     {
+         angle_error = angle_error - 2 * PI;
+     }
+     else if (angle_error < -PI)
+     {
+         angle_error = angle_error + 2 * PI;
+     }
+
+     /* set linear and angular velocities, taking care not to use values that exceed maximum values */
+     /* or use values that are less than minimum values needed to produce a response in the robot   */
+
+     angular_velocity = locomotionParameterData.angle_gain_mimo * angle_error;
+
+     if (fabs(angular_velocity) < locomotionParameterData.min_angular_velocity)
+         msg.angular.z = locomotionParameterData.min_angular_velocity * signnum(angular_velocity);
+     else if (fabs(angular_velocity) > locomotionParameterData.max_angular_velocity)
+         msg.angular.z = locomotionParameterData.max_angular_velocity * signnum(angular_velocity);
+     else
+         msg.angular.z = angular_velocity;
+
+     /* don't slow down if driving to a waypoint */
+
+     if (waypoints)
+     {
+         linear_velocity = locomotionParameterData.max_linear_velocity / 2;
+     }
+     else
+     {
+         linear_velocity = locomotionParameterData.position_gain_mimo * position_error;
+     }
+
+     if (linear_velocity < locomotionParameterData.min_linear_velocity)
+         msg.linear.x = locomotionParameterData.min_linear_velocity;
+     else if (linear_velocity > locomotionParameterData.max_linear_velocity)
+         msg.linear.x = locomotionParameterData.max_linear_velocity;
+
+     /* if currently stopped, ramp up to the required velocity ... don't attempt an infinite acceleration to the required velocity */
+
+     if (current_linear_velocity == 0)
+     {
+
+         for (int i = 1; i < number_of_ramp_up_steps; i++)
+         {
+      msg.linear.x = (double)linear_velocity * ((double)i / (double)number_of_ramp_up_steps);
+      msg.angular.z = 0;
+
+      if (debug)
+      {
+              printf("Ramping up velocity\n");
+              // printf("Current pose:         %5.3f %5.3f %5.3f\n", current_x, current_y, current_theta);
+              // printf("Goal, heading, theta: %5.3f, %5.3f, %5.3f\n", goal_theta, goal_direction, current_theta);
+              printf("Error:                %5.3f, %5.3f\n", position_error, angle_error);
+              printf("velocity command:     %5.3f, %5.3f\n\n", msg.linear.x, msg.angular.z);
+      }
+
+      pub.publish(msg); // Publish the message
+
+      rate.sleep(); // Wait until it's time for another iteration
+         }
+         current_linear_velocity = linear_velocity;
+     }
+
+     msg.linear.x = linear_velocity;
+
+     if (debug)
+     {
+         printf("Going\n");
+         // printf("Current pose:         %5.3f %5.3f %5.3f\n", current_x, current_y, current_theta);
+         // printf("Goal, heading, theta: %5.3f, %5.3f, %5.3f\n", goal_theta, goal_direction, current_theta);
+         printf("Error:                %5.3f, %5.3f\n", position_error, angle_error);
+         printf("velocity command:     %5.3f, %5.3f\n\n", msg.linear.x, msg.angular.z);
+     }
+
+     pub.publish(msg); // Publish the message
+
+     rate.sleep(); // Wait until it's time for another iteration
+
+   } while ((fabs(position_error) > locomotionParameterData.position_tolerance) && ros::ok());
+
+   /* for the final destination, adjust the orientation to match the goal pose */
+   /* ------------------------------------------------------------------------ */
+
+   if (!waypoints)
+   {
+
+     do
+     {
+
+         /* if the robot has reached the destination             */
+         /* adjust the orientation to match the goal orientation */
+
+         /* get the current pose */
+
+         ros::spinOnce(); // Let ROS take over to handle the callback
+
+         /* set linear and angular velocities, taking care not to use values that exceed maximum values */
+         /* or use values that are less than minimum values needed to produce a response in the robot   */
+
+         angle_error = goal_theta - current_theta;
+
+         current_linear_velocity = 0;
+         msg.linear.x = current_linear_velocity;
+
+         angular_velocity = locomotionParameterData.angle_gain_mimo * angle_error;
+
+         if (fabs(angular_velocity) < locomotionParameterData.min_angular_velocity)
+      msg.angular.z = locomotionParameterData.min_angular_velocity * signnum(angular_velocity);
+         else if (fabs(angular_velocity) > locomotionParameterData.max_angular_velocity)
+      msg.angular.z = locomotionParameterData.max_angular_velocity * signnum(angular_velocity);
+         else
+      msg.angular.z = angular_velocity;
+
+         if (debug)
+         {
+      printf("Orienting\n");
+      // printf("Current pose:         %5.3f %5.3f %5.3f\n", current_x, current_y, current_theta);
+      // printf("Goal, heading, theta: %5.3f, %5.3f, %5.3f\n", goal_theta, goal_direction, current_theta);
+      printf("Error:                %5.3f, %5.3f\n", position_error, angle_error);
+      printf("velocity command:     %5.3f, %5.3f\n\n", msg.linear.x, msg.angular.z);
+         }
+
+         pub.publish(msg); // Publish the message
+
+         rate.sleep(); // Wait until it's time for another iteration
+
+     } while ((fabs(angle_error) > locomotionParameterData.angle_tolerance_orienting) && ros::ok());
+
+      current_linear_velocity = 0;
+      msg.linear.x = current_linear_velocity;
+
+      angular_velocity = 0;
+      msg.angular.z = angular_velocity;
+
+      pub.publish(msg); // Publish the message
+
+      // rate.sleep(); // Wait until it's time for another iteration
+
+   }
+ }
+
+
 /*
  *   Function to round a doubleing point number to a specified number of decimal places
  *
@@ -1994,7 +3108,7 @@ void goToPoseMIMO(double x, double y, double theta, locomotionParameterDataType 
  *     the rounded value
  * 
  */
-double round_floating_point(double value, int decimal_places){
+double roundFloatingPoint(double value, int decimal_places){
    double rounded_value = 0.0;
 
    // rounded_value = std::round(value * std::pow(10, decimal_places)) / std::pow(10, decimal_places);
@@ -2048,7 +3162,7 @@ double radians(double degrees)
  *   @return:
  *       None
  */
-void prompt_and_exit(int status){
+void promptAndExit(int status){
     printf("Press any key to exit ... \n");
     getchar();
     exit(status);
@@ -2063,7 +3177,7 @@ void prompt_and_exit(int status){
  *   @return:
  *       None
  */
-void prompt_and_continue(){
+void promptAndContinue(){
     printf("Press X to quit or Press any key to continue...\n");
     char got_char = getchar();
     if ((got_char == 'X') || (got_char == 'x')){
@@ -2072,12 +3186,12 @@ void prompt_and_continue(){
     }
 }
 
-void move_robot_actuators_to_default(){
+void moveRobotActuatorsToDefault(){
     double gesture_duration = 1.0; // Set the duration of the gesture to 2 seconds
     // Create a control client for the head
     std::string head_topic;
     head_topic = "/pepper_dcm/Head_controller/follow_joint_trajectory";
-    ControlClientPtr head_client = create_client(head_topic);
+    ControlClientPtr head_client = createClient(head_topic);
 
     if(head_client == nullptr){
         ROS_ERROR("Error creating action client for head controller");
@@ -2093,7 +3207,7 @@ void move_robot_actuators_to_default(){
     // Create a control client for the left arm
       std::string left_arm_topic;
       left_arm_topic = "/pepper_dcm/LeftArm_controller/follow_joint_trajectory";
-      ControlClientPtr left_arm_client = create_client(left_arm_topic);
+      ControlClientPtr left_arm_client = createClient(left_arm_topic);
 
       if(left_arm_client == nullptr){
           ROS_ERROR("Error creating action client for left arm controller");
@@ -2108,7 +3222,7 @@ void move_robot_actuators_to_default(){
       // Create a control client for the right arm
       std::string right_arm_topic;
       right_arm_topic = "/pepper_dcm/RightArm_controller/follow_joint_trajectory";
-      ControlClientPtr right_arm_client = create_client(right_arm_topic);
+      ControlClientPtr right_arm_client = createClient(right_arm_topic);
 
       if(right_arm_client == nullptr){
           ROS_ERROR("Error creating action client for right arm controller");
@@ -2123,7 +3237,7 @@ void move_robot_actuators_to_default(){
       // Create a control client for the leg
       std::string leg_topic;
       leg_topic = "//pepper_dcm/Pelvis_controller/follow_joint_trajectory";
-      ControlClientPtr leg_client = create_client(leg_topic);
+      ControlClientPtr leg_client = createClient(leg_topic);
 
       if(leg_client == nullptr){
           ROS_ERROR("Error creating action client for leg controller");
@@ -2137,18 +3251,18 @@ void move_robot_actuators_to_default(){
       std::vector<double> leg_position = {0.0, 0.0, 0.0};
     
     // Move the head to the specified position
-    move_to_position(head_client, head_joint_names, head_position, 
+    moveToPosition(head_client, head_joint_names, head_position, 
                      left_arm_client, left_arm_joint_names, left_arm_position, 
                      right_arm_client, right_arm_joint_names, right_arm_position, 
                      leg_client, leg_joint_names, leg_position, 
                      gesture_duration);
 
     // Move the head to the specified position
-      // move_one_actuator_to_position(head_client, head_joint_names, gesture_duration, head_position);
+      // moveOneActuatorToPosition(head_client, head_joint_names, gesture_duration, head_position);
 
 }
 
-void move_to_position(ControlClientPtr& head_client, const std::vector<std::string>& head_joint_names, std::vector<double> head_positions, 
+void moveToPosition(ControlClientPtr& head_client, const std::vector<std::string>& head_joint_names, std::vector<double> head_positions, 
                         ControlClientPtr& left_arm_client, const std::vector<std::string>& left_arm_joint_names, std::vector<double> left_arm_positions, 
                         ControlClientPtr& right_arm_client, const std::vector<std::string>& right_arm_joint_names, std::vector<double> right_arm_positions, 
                         ControlClientPtr& leg_client, const std::vector<std::string>& leg_joint_names, std::vector<double> leg_positions, 
@@ -2202,7 +3316,7 @@ void move_to_position(ControlClientPtr& head_client, const std::vector<std::stri
    // ros::Duration(duration).sleep();
 }
 
-void move_one_actuator_to_position(ControlClientPtr& client, const std::vector<std::string>& joint_names, double duration, 
+void moveOneActuatorToPosition(ControlClientPtr& client, const std::vector<std::string>& joint_names, double duration, 
                         std::vector<double> positions){
     // Create a goal message
     control_msgs::FollowJointTrajectoryGoal goal;

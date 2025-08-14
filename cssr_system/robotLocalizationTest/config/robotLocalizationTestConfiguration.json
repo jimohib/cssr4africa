@@ -1,0 +1,18 @@
+{
+  "verboseMode": true,
+  "unitTestMode": true,
+  "camera": "RGBRealSense",
+  "depthCamera": "DepthRealSense",
+  "useDepth": false,
+  "testDuration": 300.0,
+  "resetInterval": 30.0,
+  "absolutePoseTimeout": 300.0,
+  "cameraInfoTimeout": 15.0,
+  "useHeadYaw": true,
+  "headYawJointName": "HeadYaw",
+  "mapFrame": "map",
+  "odomFrame": "odom",
+  "landmarkFile": "/robotLocalizationTest/data/arucoLandmarksTest.json",
+  "topicsFile": "/robotLocalizationTest/data/pepperTopicsTest.dat",
+  "cameraInfoFile": "/robotLocalizationTest/data/cameraInfoTest.json"
+}
