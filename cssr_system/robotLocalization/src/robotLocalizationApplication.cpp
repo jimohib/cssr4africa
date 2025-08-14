@@ -25,7 +25,7 @@
     * ROS TF libraries - tf2/LinearMath/Quaternion.h, tf2_geometry_msgs/tf2_geometry_msgs.h, tf2_ros/transform_listener.h, tf2_ros/buffer.h
     * OpenCV libraries - opencv2/opencv.hpp, opencv2/aruco.hpp, cv_bridge/cv_bridge.h
     * Image transport - image_transport/image_transport.h
-    * Utility libraries - angles/angles.h, yaml-cpp/yaml.h
+    * Utility libraries - angles/angles.h, yaml-cpp/yaml.h, json/json.h
     * 
  * Parameters
     *
@@ -36,25 +36,27 @@
     * Configuration File Parameters
         * Key                   |     Value 
         * --------------------- |     -------------------
-        * verbose               |     false
-        * use_depth             |     false
-        * use_head_yaw          |     false
-        * head_yaw_joint_name   |     HeadYaw
-        * reset_interval        |     30.0
-        * absolute_pose_timeout |     300.0
-        * landmark_file           |     config/landmarks.yaml
-        * topics_file           |     data/pepperTopics.dat
-        * camera_info_file      |     config/camera_info.yaml
-        * camera_info_timeout   |     10.0
-        * map_frame             |     map
-        * odom_frame            |     odom
+        * verboseMode               |     false
+        * camera               |     FrontCamera
+        * depthCamera          |     DepthRealSense
+        * useDepth             |     false
+        * resetInterval        |     30.0
+        * absolutePoseTimeout |     300.0
+        * cameraInfoTimeout   |     10.0
+        * useHeadYaw          |     false
+        * headYawJointName   |     HeadYaw
+        * mapFrame             |     map
+        * odomFrame            |     odom
+        * landmarkFile           |     /robotLocalization/data/arucoLandmarks.json
+        * topicsFile           |     /robotLocalization/data/pepperTopics.dat
+        * cameraInfoFile      |     /robotLocalization/data/cameraInfo.yaml
         *
  * Subscribed Topics and Message Types
     *
-    * /pepper_dcm/odom                                              nav_msgs/Odometry
-    * /pepper_dcm/imu                                               sensor_msgs/Imu
+    * /naoqi_driver/odom                                            nav_msgs/Odometry
+    * /naoqi_driver/imu/base                                        sensor_msgs/Imu
     * /camera/color/image_raw                                       sensor_msgs/Image
-    * /camera/depth/image_raw                                       sensor_msgs/Image
+    * /camera/aligned_depth_to_color/image_raw                      sensor_msgs/Image
     * /joint_states                                                 sensor_msgs/JointState
     * /camera/color/camera_info                                     sensor_msgs/CameraInfo
     *
@@ -75,8 +77,8 @@
  * Input Data Files
     *
     * pepperTopics.dat - Contains topic names for robot sensors and actuators
-    * landmarks.yaml - 3D coordinates of ArUco markers in the environment
-    * camera_info.yaml - Camera intrinsic parameters for fallback (fx, fy, cx, cy)
+    * arucoLandmarks.yaml - 3D coordinates of ArUco markers in the environment
+    * cameraInfo.yaml - Camera intrinsic parameters for fallback (fx, fy, cx, cy)
     *
  * Output Data Files
     *
@@ -84,9 +86,7 @@
     *
  * Configuration Files
     *
-    * landmarks.yaml - Landmark configuration with marker IDs and 3D positions
-    * camera_info.yaml - Camera calibration parameters
-    * pepperTopics.dat - Topic mapping configuration
+    * robotLocalizationConfiguration.json - Main configuration parameters file
     *
  * Example Instantiation of the Module
     *

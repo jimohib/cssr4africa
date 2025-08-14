@@ -144,13 +144,13 @@ void RobotLocalizationNode::loadCameraInfoFromFile() {
                      camera_info_file_.c_str(), reader.getFormattedErrorMessages().c_str());
             return;
         }
-        
-        if (!root.isMember("camera_info")) {
-            ROS_ERROR("No 'camera_info' object found in %s", camera_info_file_.c_str());
+
+        if (!root.isMember("cameraInfo")) {
+            ROS_ERROR("No 'cameraInfo' object found in %s", camera_info_file_.c_str());
             return;
         }
-        
-        const Json::Value& camera_info = root["camera_info"];
+
+        const Json::Value& camera_info = root["cameraInfo"];
         
         // Check for required fields
         if (!camera_info.isMember("fx") || !camera_info.isMember("fy") || 

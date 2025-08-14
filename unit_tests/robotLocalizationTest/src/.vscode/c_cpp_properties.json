@@ -1,0 +1,31 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/br/workspace/pepper_rob_ws/devel/include/**",
+        "/opt/ros/noetic/include/**",
+        "/home/br/workspace/pepper_rob_ws/src/hector_slam/hector_geotiff/include/**",
+        "/home/br/workspace/pepper_rob_ws/src/hector_slam/hector_map_tools/include/**",
+        "/home/br/workspace/pepper_rob_ws/src/hector_slam/hector_mapping/include/**",
+        "/home/br/workspace/pepper_rob_ws/src/hector_slam/hector_marker_drawing/include/**",
+        "/home/br/workspace/pepper_rob_ws/src/naoqi_dcm_driver/include/**",
+        "/home/br/workspace/pepper_rob_ws/src/naoqi_driver/include/**",
+        "/home/br/workspace/pepper_rob_ws/src/cssr4africa/pepper_interface_tests/include/**",
+        "/home/br/workspace/pepper_rob_ws/src/Pepper-ROS-Navigation-main/include/**",
+        "/home/br/workspace/pepper_rob_ws/src/robotNavigation-main/robotNavigation-main/robot_navigation/include/**",
+        "/home/br/workspace/pepper_rob_ws/src/rpp_assignment5/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

@@ -12,5 +12,5 @@
   "odomFrame": "odom",
   "landmarkFile": "/robotLocalization/data/arucoLandmarks.json",
   "topicsFile": "/robotLocalization/data/pepperTopics.dat",
-  "cameraInfoFile": "/robotLocalization/config/cameraInfo.json"
+  "cameraInfoFile": "/robotLocalization/data/cameraInfo.json"
 }

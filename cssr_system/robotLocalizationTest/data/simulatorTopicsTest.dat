@@ -1,6 +1,0 @@
-FrontCamera           /pepper/camera/front/image_raw
-StereoCamera          /pepper/camera/stereo/image_raw
-CameraInfo          /camera/color/camera_info
-Odometry              /pepper/odom
-IMU                   /pepper/imu/base
-HeadYaw               /joint_states
