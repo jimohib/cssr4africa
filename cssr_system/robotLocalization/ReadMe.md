@@ -6,21 +6,24 @@
   <img src="CSSR4AfricaLogo.svg" alt="CSSR4Africa Logo" style="width:50%; height:auto;">
 </div>
 
-The `robotLocalization` ROS node provides accurate pose estimation capabilities for the Pepper humanoid robot using visual landmark detection and sensor fusion. This node combines ArUco marker detection from RGB and depth cameras with odometry data to deliver robust pose estimation in indoor environments.
+The `robotLocalization` ROS node provides accurate pose estimation capabilities for the Pepper humanoid robot using visual landmark detection and sensor fusion. This node combines ArUco marker detection (from RGB and depth cameras) with odometry data to deliver robust pose estimation in indoor environments.
 
-The package implements both triangulation (RGB-only) and trilateration (RGB-D) algorithms for absolute pose computation from detected landmarks, then maintains continuous positioning through odometry integration. The system supports periodic automatic pose correction and on-demand pose reset services for reliable localization in dynamic environments.
+The package implements both triangulation (RGB) and trilateration (RGB-D) algorithms for absolute pose computation from detected ArUco landmarks, then maintains continuous positioning through odometry integration. The system supports periodic automatic pose correction and on-demand pose reset services for reliable localization in dynamic environments.
 
 # Documentation
 Accompanying this code is the deliverable report that provides a detailed explanation of this node and its software. The deliverable report can be found in [D4.2.4 Robot Localization](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf).
 
 # Run the Robot Localization Node
+
 ## Physical Robot 
-### Steps
+
+### Prerequisites
+
 1. **Install the required software components:**
    
    Set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf).
 
-   **Install Intel RealSense SDK and ROS Wrapper (For the Intel realsense camera):**
+   **Install Intel RealSense SDK and ROS Wrapper (For the Intel RealSense camera):**
    
    - Add Intel server to the list of repositories:
       ```bash
@@ -65,202 +68,301 @@ Accompanying this code is the deliverable report that provides a detailed explan
         sudo apt install ros-noetic-aruco ros-noetic-aruco-msgs ros-noetic-aruco-ros
       ``` 
 
-4. **Update Data and Configuration Files:**
-   
-   Navigate to the configuration files and update them according to your use case and environment setup:
+## Configuration
 
-   **Launch File Configuration** (`launch/robotLocalizationLaunchRobot.launch`):
-   | Parameter | Description | Values | Default |
-   |-----------|-------------|---------|---------|
-   | `verbose` | Diagnostic info printing | `true`, `false` | `false` |
-   | `use_depth` | Enable depth-based trilateration | `true`, `false` | `false` |
-   | `use_head_yaw` | Compensate for head rotation | `true`, `false` | `true` |
-   | `head_yaw_joint_name` | Name of head yaw joint | String | `HeadYaw` |
-   | `reset_interval` | Automatic pose reset interval (seconds) | Float | `10.0` |
-   | `absolute_pose_timeout` | Timeout for pose validity (seconds) | Float | `300.0` |
-   | `camera_info_timeout` | Timeout for retrieving camera intrinsic from camera (seconds) | Float | `15.0` |
+### JSON Configuration File
 
-   **Landmark (ArUco Markers) Data** (`data/landmarks.json`): These are the positions of ArUco markers placed in the known environment.
-   ```json
-   "landmarks": [
+Navigate to the configuration file and update it according to your use case and environment setup:
+
+**Main Configuration** (`config/robotLocalizationConfiguration.json`):
+
+| Parameter | Description | Values | Default |
+|-----------|-------------|---------|---------|
+| `verboseMode` | Diagnostic info printing | `true`, `false` | `true` |
+| `camera` | RGB camera source | `"RGBRealSense"`, `"FrontCamera"` | `"RGBRealSense"` |
+| `depthCamera` | Depth camera source | `"DepthRealSense"` | `"DepthRealSense"` |
+| `useDepth` | Enable depth-based trilateration | `true`, `false` | `false` |
+| `resetInterval` | Automatic pose reset interval (seconds) | Float | `30.0` |
+| `absolutePoseTimeout` | Timeout for pose validity (seconds) | Float | `300.0` |
+| `cameraInfoTimeout` | Timeout for retrieving camera intrinsics (seconds) | Float | `15.0` |
+| `useHeadYaw` | Compensate for head rotation | `true`, `false` | `true` |
+| `headYawJointName` | Name of head yaw joint | String | `"HeadYaw"` |
+| `mapFrame` | Map coordinate frame | String | `"map"` |
+| `odomFrame` | Odometry coordinate frame | String | `"odom"` |
+
+### Data Files Configuration
+
+**Landmark (ArUco Markers) Data** (`data/arucoLandmarks.json`): 
+These are the positions of ArUco markers placed in the known environment. Update accordingly.
+```json
+{
+  "landmarks": [
     {
       "id": 1,
-      "x": 5.0,   # X coordinate in meters
-      "y": 4.8,   # Y coordinate in meters
-      "z": 0.71   # Z coordinate in meters (ideal is camera height)
+      "x": 5.0,   // X coordinate in meters
+      "y": 4.8,   // Y coordinate in meters  
+      "z": 0.71   // Z coordinate in meters (ideal is camera height)
     },
     {
       "id": 2,
       "x": 2.0,
       "y": 5.4,
       "z": 0.71
-    }]
+    }
+  ]
+}
+```
+
+**Camera Calibration** (`data/cameraInfo.json`):
+Default calibration if camera intrinsics are not retrieved automatically from camera. Update accordingly.
+```json
+{
+  "cameraInfo": {
+    "fx": 911.6033325195312,   // Focal length X
+    "fy": 910.8851318359375,   // Focal length Y
+    "cx": 655.0755615234375,   // Principal point X
+    "cy": 363.9165954589844    // Principal point Y
+  }
+}
+```
+
+To retrieve and update camera intrinsic values:
+- Launch the RealSense camera
+  ```bash
+  roslaunch realsense2_camera rs_camera.launch
+  ```
+- Echo the camera info topic and retrieve values
+  ```bash
+  rostopic echo /camera/color/camera_info
+  ```
+
+**Topic Mapping** (`data/pepperTopics.dat`):
+Maps logical sensor names to actual ROS topics.
+```
+FrontCamera         /naoqi_driver/camera/front/image_raw
+StereoCamera        /naoqi_driver/camera/stereo/image_raw
+RGBRealSense        /camera/color/image_raw
+DepthRealSense      /camera/aligned_depth_to_color/image_raw
+CameraInfo          /camera/color/camera_info
+Odometry            /naoqi_driver/odom
+IMU                 /naoqi_driver/imu/base
+HeadYaw             /joint_states
+```
+
+## ArUco Marker Setup
+
+Place ArUco markers (DICT_4X4_100) in your physical environment at the coordinates specified in `arucoLandmarks.json`. Ensure markers are:
+- Clearly visible from robot operating areas
+- At appropriate heights (recommended: camera height ±0.5m)
+- Well-distributed to avoid collinear configurations and acute angles between markers
+- Properly lit and unobstructed
+- Using the DICT_4X4_100 dictionary for compatibility
+
+## Running the System
+
+### Launch Commands
+
+Follow these steps, running each command in different terminals:
+
+1. **Source the workspace in first terminal:**
+   ```bash
+   cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash
    ```
 
-   **Camera Calibration** (`config/camera_info.json`):
-   Default calibration if camera intrinsic is not retrieved automatically from camera.
-   ```json
-   "camera_info": {
-      "fx": 911.6033325195312,   # Focal length X
-      "fy": 910.8851318359375,   # Focal length Y
-      "cx": 655.0755615234375,   # Principal point X
-      "cy": 363.9165954589844    # Principal point Y
-   }
+2. **Launch the robot:**
+   ```bash
+   roslaunch pepper_interface_tests actuatorTestLaunchRobot.launch robot_ip:=<robot_ip> roscore_ip:=<roscore_ip> network_interface:=<network_interface>
    ```
-    To retrieve and update these values:
-      - Launch the realsense camera
-        ```bash
-            roslaunch realsense2_camera rs_camera.launch
-          ```
-      - Echo the camera info topic and retrieve values
-        ```bash
-            rostopic echo /camera/color/camera_info
-          ```
-
-5. **Set up ArUco Markers:**
    
-   Place ArUco markers (DICT_4X4_100) in your physical environment at the coordinates specified in `landmarks.json`. Ensure markers are:
-   - Clearly visible from robot operating areas
-   - At appropriate heights (recommended: camera height ±0.5m)
-   - Well-distributed to avoid collinear configurations and acute angles between the markers
-   - Properly lit and unobstructed
+   > **NOTE:** Ensure that the IP addresses `robot_ip` and `roscore_ip` and the network interface `network_interface` are correctly set based on your robot's configuration and your computer's network interface.
 
-6. **Run the `robotLocalization` from `cssr_system` package:**
+3. **Launch the robotLocalization node (choose one):**
    
-   Follow below steps, run in different terminals.
-    -  Source the workspace in first terminal:
-        ```bash
-          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash
-        ```
-    -  Launch the robot:
-        ```bash
-          roslaunch pepper_interface_tests actuatorTestLaunchRobot.launch robot_ip:=<robot_ip> roscore_ip:=<roscore_ip> network_interface:=<network_interface>
-        ```
-        <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
-         <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
-         <span style="color: #cccccc;">Ensure that the IP addresses <code>robot_ip</code> and <code>roscore_ip</code> and the network interface <code>network_interface</code> are correctly set based on your robot's configuration and your computer's network interface. </span>
-        </div>
-    - Open a new terminal to launch the `robotLocalization` node.
-        ```bash
-          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationLaunchRobot.launch
-        ```
-        
-        **Or run the node standalone** (if camera is already launched and maintaining default configurations):
-        ```bash
-          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && rosrun cssr_system robotLocalization
-        ```
-    
-      N.B: Running the `robotLocalization` node requires camera topics (`/camera/color/image_raw`, `/camera/aligned_depth_to_color/image_raw`, `/camera/color/camera_info`) and odometry topic (`/naoqi_driver/odom`) to be available from the robot or simulation environment.
+   **Option A: Full launch with camera and transforms:**
+   ```bash
+   cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationLaunchRobot.launch
+   ```
+   
+   **Option B: Standalone node** (if camera is already launched):
+   ```bash
+   cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && rosrun cssr_system robotLocalization
+   ```
 
+### Required Topics
 
-## Executing an Action
-Upon launching the node, the hosted services (`/robotLocalization/set_pose`, `/robotLocalization/reset_pose`) are available and ready to be invoked. This can be verified by running the following command in a new terminal:
+The `robotLocalization` node requires the following topics to be available:
+- `/camera/color/image_raw` - RGB camera images
+- `/camera/aligned_depth_to_color/image_raw` - Depth images (if using depth mode)
+- `/camera/color/camera_info` - Camera intrinsic parameters
+- `/naoqi_driver/odom` - Robot odometry
+- `/joint_states` - Joint positions (for head yaw compensation)
 
-```sh
+## Service Interface
+
+Upon launching the node, the following services are available:
+- `/robotLocalization/set_pose`
+- `/robotLocalization/reset_pose`
+
+```bash
+# Verify services are running
 rosservice list | grep /robotLocalization
 ```
 
 ### Service Commands
 
-**Set the Initial Robot Pose**
-Use the set pose service to initialize or correct the robot's pose:
-```sh
+**Set the Initial Robot Pose (for manually setting the robot position):**
+```bash
 rosservice call /robotLocalization/set_pose x y theta
 ```
+- `x`: X-coordinate in meters (float)
+- `y`: Y-coordinate in meters (float)  
+- `theta`: Orientation in degrees (float)
 
-**Reset Pose Using Landmarks**
-Trigger absolute pose computation from detected markers:
-```sh
+**Reset Pose Using Landmarks:**
+```bash
 rosservice call /robotLocalization/reset_pose
 ```
+- Triggers automatic pose computation from detected markers
 
-**View Detected Markers**
-Monitor the annotated marker image to verify detection:
-```sh
+**View Detected Markers:**
+```bash
 rosrun image_view image_view image:=/robotLocalization/marker_image
 ```
 
-**Echo the Pose Topic**
-View the pose data published by the localization node:
-```sh
+**Echo the Pose Topic:**
+```bash
 rostopic echo /robotLocalization/pose
 ```
 
-### Service Request Parameters
-#### 1. Set Pose Service (`/robotLocalization/set_pose`)
-- `x`: X-coordinate in meters (float)
-- `y`: Y-coordinate in meters (float)
-- `theta`: Orientation in degrees (float)
+### Example Service Calls
 
-#### 2. Reset Pose Service (`/robotLocalization/reset_pose`)
-- No parameters (triggers automatic pose computation from detected landmarks)
-
-### Sample Invocations
 - Set robot at position (2.0, 6.6) facing 0 degrees:
-  ```sh
+  ```bash
   rosservice call /robotLocalization/set_pose 2.0 6.6 0.0
   ```
-- Set robot facing -45 degrees (360 degrees - 45 degrees):
-  ```sh
+- Set robot facing -45 degrees (315 degrees):
+  ```bash
   rosservice call /robotLocalization/set_pose 2.0 6.6 315.0
   ```
 - Trigger pose reset from landmarks:
-  ```sh
+  ```bash
   rosservice call /robotLocalization/reset_pose
   ```
+
+## Published Topics
+
+| Topic | Message Type | Description |
+|-------|-------------|-------------|
+| `/robotLocalization/pose` | `geometry_msgs/Pose2D` | Current robot pose (x, y, theta in degrees) |
+| `/robotLocalization/marker_image` | `sensor_msgs/Image` | Annotated image showing detected ArUco markers |
+
+## Algorithm Details
+
+### Triangulation Algorithm (RGB-only mode)
+- Detects ArUco markers in camera image using OpenCV ArUco library
+- Computes viewing angles between marker pairs using camera intrinsics
+- Uses geometric triangulation with circle-circle intersection to determine robot position
+- Employs multi-solution scoring system based on geometric constraints:
+  - Triangle area quality (larger areas = better precision)
+  - Distance reasonableness (prefers moderate distances)
+  - Angle quality (avoids degenerate triangulation)
+  - Landmark separation validation
+  - Proximity penalties for unrealistic positions
+
+### Trilateration Algorithm (Depth mode)
+- Combines ArUco detection with depth measurements from RGB-D camera
+- Extracts distance information from depth image at marker centers
+- Solves system of distance equations using circle intersection
+- Uses least-squares approach for overdetermined systems
+
+### Pose Fusion
+- Maintains baseline pose from absolute measurements
+- Integrates odometry for continuous pose updates between landmark detections
+- Applies periodic corrections to prevent drift accumulation
+- Supports head yaw compensation for camera orientation changes
 
 ## Monitoring and Debugging
 
 **Enable Verbose Output:**
-```sh
+```bash
+# Set parameter at runtime
 rosparam set /robotLocalization/verbose true
 ```
-or in the launch configuration file
+or modify the configuration file
 
 **Check Node Status:**
-```sh
+```bash
 rosnode info /robotLocalization
 ```
 
 **Monitor Topic Rates:**
-```sh
+```bash
 rostopic hz /robotLocalization/pose
 rostopic hz /camera/color/image_raw
 ```
 
+**Monitor Transforms:**
+```bash
+rosrun tf tf_echo map odom
+```
+
 ## Troubleshooting
 
-**Common Issues:**
+### Common Issues
 
 1. **No markers detected:**
-   - Check marker visibility and lighting
-   - Verify landmark coordinates in config file
+   - Check marker visibility and lighting conditions
+   - Verify landmark coordinates in config file match physical placement
    - Ensure markers use DICT_4X4_100 dictionary
+   - Check camera image quality with `rosrun image_view image_view image:=/camera/color/image_raw`
 
 2. **Inaccurate pose estimation:**
-   - Calibrate camera intrinsics properly
-   - Check for marker ID conflicts
-   - Verify landmark placement accuracy (avoid collinear markers and acute angles)
+   - Calibrate camera intrinsics properly using RealSense calibration tools
+   - Check for marker ID conflicts in landmark configuration
+   - Verify landmark placement accuracy with measuring tools
+   - Avoid collinear marker configurations and acute viewing angles
 
 3. **High pose drift:**
-   - Reduce reset_interval parameter
-   - Check odometry quality
-   - Ensure sufficient landmark coverage
+   - Check odometry quality with `rostopic echo /naoqi_driver/odom`
+   - Ensure sufficient landmark coverage throughout operating area
+   - Verify transforms between coordinate frames
 
-<div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
-      <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
-      <span style="color: #cccccc;">To fully understand the configuration values, data requirements, debugging processes, and the overall functionality of the robotLocalization node, please refer to the <a href="https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf" style="color: #66b3ff;">D4.2.4 Robot Localization</a>. These manuals provide comprehensive explanations and step-by-step instructions essential for effective use and troubleshooting.</span>
-  </div>
-  
+4. **Camera intrinsics not received:**
+   - Check RealSense camera connection and drivers
+   - Verify camera info topic is publishing: `rostopic echo /camera/color/camera_info`
+   - Ensure camera launch includes intrinsic calibration
+   - Fallback configuration will be loaded from file after timeout
+
+5. **Service call failures:**
+   - Verify node is running: `rosnode list | grep robotLocalization`
+   - Check service availability: `rosservice list | grep robotLocalization`
+   - Ensure minimum 3 markers are visible for pose reset
+
+### Performance Optimization
+
+- **For better accuracy:** Use RGB mode (`useDepth: false`)
+- **For faster processing:** Disable verbose mode and reduce image resolution
+- **For stable operation:** Place markers at consistent heights and ensure good lighting
+
+## System Requirements
+
+- **ROS:** Noetic
+- **OpenCV:** 4.2+ with ArUco support
+- **Camera:** Intel RealSense D435/D455 or compatible RGB-D camera
+- **Markers:** ArUco markers from DICT_4X4_100 dictionary
+- **Compute:** Sufficient processing power for real-time image processing
+
+> **NOTE:** To fully understand the configuration values, data requirements, debugging processes, and the overall functionality of the robotLocalization node, please refer to the [D4.2.4 Robot Localization](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf). These manuals provide comprehensive explanations and step-by-step instructions essential for effective use and troubleshooting.
+
 ## Support
 
 For issues or questions:
 - Create an issue on GitHub
-- Contact: <a href="mailto:dvernon@andrew.cmu.edu">dvernon@andrew.cmu.edu</a>, <a href="mailto:ioj@andrew.cmu.edu">ioj@andrew.cmu.edu</a><br>
-- Visit: <a href="http://www.cssr4africa.org">www.cssr4africa.org</a>
+- Contact: [ioj@alumni.cmu.edu](mailto:ioj@alumni.cmu.edu), [david@vernon.eu](mailto:david@vernon.eu)
+- Visit: [www.cssr4africa.org](http://www.cssr4africa.org)
 
 ## License  
 Funded by African Engineering and Technology Network (Afretec)  
 Inclusive Digital Transformation Research Grant Programme
 
-Date:   2025-06-23
+Date: 2025-06-23

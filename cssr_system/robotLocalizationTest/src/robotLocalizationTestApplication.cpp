@@ -14,13 +14,14 @@
  *
  * This program comes with ABSOLUTELY NO WARRANTY.
 
- * This node is responsible for running the tests on the robot localization module.
- * The tests validate the communication, computation, and configuration functionality of the components.
- * It subscribes to the necessary topics and simulates sensor data for testing purposes.
+ * This node is responsible for running comprehensive unit tests on the robot localization module.
+ * The tests validate the communication, computation, and configuration functionality of the components
+ * across three main test categories: Test A (Communication), Test B (Computation), and Test C (Configuration).
+ * It integrates with both physical robot sensors and test harness environments for controlled testing.
  *
  * Libraries
-    * Standard libraries - std::string, std::vector, std::map, std::fstream
-    * ROS libraries - ros/ros.h, nav_msgs/Odometry.h, sensor_msgs/Imu.h, sensor_msgs/Image.h
+    * Standard libraries - std::string, std::vector, std::map, std::fstream, std::algorithm, std::numeric
+    * ROS libraries - ros/ros.h, ros/package.h, nav_msgs/Odometry.h, sensor_msgs/Imu.h, sensor_msgs/Image.h
     *
  * Parameters
     *
@@ -31,30 +32,36 @@
     * Configuration File Parameters
         * Key                   |     Value 
         * --------------------- |     -------------------
-        * verboseMode               |     false
-        * unitTestMode         |     true
-        * camera               |     FrontCamera
-        * depthCamera          |     DepthRealSense
-        * useDepth             |     false
-        * testDuration         |     300.0
-        * resetInterval        |     30.0
-        * absolutePoseTimeout |     300.0
-        * cameraInfoTimeout   |     10.0
-        * useHeadYaw          |     false
-        * headYawJointName   |     HeadYaw
-        * mapFrame             |     map
-        * odomFrame            |     odom
-        * landmarkFile           |     /robotLocalizationTest/data/arucoLandmarksTest.json
-        * topicsFile           |     /robotLocalizationTest/data/pepperTopicsTest.dat
-        * cameraInfoFile      |     /robotLocalizationTest/data/cameraInfoTest.yaml
+        * verboseMode           |     true
+        * unitTestMode          |     true
+        * camera                |     RGBRealSense
+        * depthCamera           |     DepthRealSense
+        * useDepth              |     false
+        * testDuration          |     300.0
+        * resetInterval         |     30.0
+        * absolutePoseTimeout   |     300.0
+        * cameraInfoTimeout     |     15.0
+        * useHeadYaw            |     true
+        * headYawJointName      |     HeadYaw
+        * mapFrame              |     map
+        * odomFrame             |     odom
+        * landmarkFile          |     /robotLocalizationTest/data/arucoLandmarksTest.json
+        * topicsFile            |     /robotLocalizationTest/data/pepperTopicsTest.dat
+        * cameraInfoFile        |     /robotLocalizationTest/data/cameraInfoTest.json
     *
  * Subscribed Topics and Message Types
     *
-    * None
+    * /naoqi_driver/odom                                            nav_msgs/Odometry
+    * /naoqi_driver/imu/base                                        sensor_msgs/Imu
+    * /camera/color/image_raw                                       sensor_msgs/Image
+    * /camera/aligned_depth_to_color/image_raw                      sensor_msgs/Image
+    * /joint_states                                                 sensor_msgs/JointState
+    * /camera/color/camera_info                                     sensor_msgs/CameraInfo
     *
  * Published Topics and Message Types
     * 
-    * None
+    * /robotLocalization/pose                                       geometry_msgs/Pose2D
+    * /robotLocalization/marker_image                               sensor_msgs/Image
     *
  * Services Invoked
     *
@@ -62,29 +69,31 @@
     *
  * Services Advertised and Message Types
     *
-    * None
+    * /robotLocalization/reset_pose                                 cssr_system/resetPose
+    * /robotLocalization/set_pose                                   cssr_system/setPose
     *
  * Input Data Files
     *
     * pepperTopicsTest.dat - Contains topic names for robot sensors and actuators
-    * arucoLandmarksTest.yaml - 3D coordinates of ArUco markers in the environment
-    * cameraInfoTest.yaml - Camera intrinsic parameters for fallback (fx, fy, cx, cy)
-    * harnessTopicTest.dat - Contains topic names for the harness
+    * arucoLandmarksTest.json - 3D coordinates of ArUco markers in the test environment
+    * cameraInfoTest.json - Camera intrinsic parameters for fallback (fx, fy, cx, cy)
+    * harnessTopicsTest.dat - Contains topic names for the test harness environment
     *
  * Output Data Files
     *
-    * None
+    * robotLocalizationTestOutput.dat - Test results and performance metrics
     *
  * Configuration Files
     *
-    * robotLocalizationTestConfiguration.json - Contains all configuration parameters
+    * robotLocalizationTestConfiguration.json - Main configuration parameters file
     *
  * Example Instantiation of the Module
     *
     * rosrun unit_tests robotLocalizationTest
     *
-    * For the launch file:
-    *   roslaunch unit_tests robotLocalizationTestLaunchRobot.launch
+    * For the launch files:
+    *   Physical Robot: roslaunch unit_tests robotLocalizationTestLaunchRobot.launch
+    *   Test Harness:   roslaunch unit_tests robotLocalizationTestLaunchHarness.launch
     *
 ...
 *
