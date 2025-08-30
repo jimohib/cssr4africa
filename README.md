@@ -2,7 +2,7 @@
 
 Based on ethnographic research to acquire cultural knowledge about acceptable modes of communication, the CSSR4Africa project aims to equip robots with the ability to interact sensitively and politely with people in Africa using spatial, non-verbal, and verbal modes of interaction. 
 
-The CSSR4Africa software repository is under construction. The `pepper_interface_tests` is a ROS package focused on acquiring  sensor data  from the Pepper social robot and controlling actuators on the Pepper robot.
+The CSSR4Africa software repository is under construction. The `cssr_system` will contain all the main ROS nodes for the functionality of the system. The `pepper_interface_tests` is a ROS package focused on acquiring  sensor data  from the Pepper social robot and controlling actuators on the Pepper robot.
 
 There are dependencies on four other repositories:
 
