@@ -53,12 +53,14 @@
         *
  * Subscribed Topics and Message Types
     *
-    * /naoqi_driver/odom                                            nav_msgs/Odometry
-    * /naoqi_driver/imu/base                                        sensor_msgs/Imu
+    * /naoqi_driver/camera/front/image_raw                          sensor_msgs/Image
+    * /naoqi_driver/camera/stereo/image_raw                         sensor_msgs/Image
     * /camera/color/image_raw                                       sensor_msgs/Image
     * /camera/aligned_depth_to_color/image_raw                      sensor_msgs/Image
-    * /joint_states                                                 sensor_msgs/JointState
     * /camera/color/camera_info                                     sensor_msgs/CameraInfo
+    * /naoqi_driver/odom                                            nav_msgs/Odometry
+    * /naoqi_driver/imu/base                                        sensor_msgs/Imu
+    * /joint_states                                                 sensor_msgs/JointState
     *
  * Published Topics and Message Types
     * 

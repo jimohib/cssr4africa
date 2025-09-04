@@ -326,7 +326,7 @@ bool RobotLocalizationNode::computeAbsolutePose() {
         return computeAbsolutePoseWithDepth();
     } else {
         if (latest_image_.empty()) {
-            ROS_WARN("No image available for absolute pose estimation");
+            ROS_WARN("No image available for absolute robot localization");
             return false;
         }
 

@@ -21,7 +21,7 @@ Accompanying this code is the deliverable report that provides a detailed explan
 
 1. **Install the required software components:**
    
-   Set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf).
+   Set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D3.3.pdf).
 
    **Install Intel RealSense SDK and ROS Wrapper (For the Intel RealSense camera):**
    
@@ -164,6 +164,8 @@ Place ArUco markers (DICT_4X4_100) in your physical environment at the coordinat
 
 Follow these steps, running each command in different terminals:
 
+ > **NOTE:** To launch the RealSense camera when connected to a Jetson, refer to the [CSSR4Africa Software Installation Manual](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D3.3.pdf) for instructions.
+
 1. **Source the workspace in first terminal:**
    ```bash
    cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash
@@ -171,19 +173,28 @@ Follow these steps, running each command in different terminals:
 
 2. **Launch the robot:**
    ```bash
-   roslaunch pepper_interface_tests actuatorTestLaunchRobot.launch robot_ip:=<robot_ip> roscore_ip:=<roscore_ip> network_interface:=<network_interface>
+   roslaunch cssr_system cssrSystemLaunchRobot.launch robot_ip:=<robot_ip> roscore_ip:=<roscore_ip> network_interface:=<network_interface>
    ```
    
-   > **NOTE:** Ensure that the IP addresses `robot_ip` and `roscore_ip` and the network interface `network_interface` are correctly set based on your robot's configuration and your computer's network interface.
+   > **NOTE:** Ensure that the IP addresses `robot_ip`, `roscore_ip` and the network interface `network_interface` are correctly set based on your robot's configuration and your computer's network interface. To launch using the default values that have been set in the launch file, simply run:
 
-3. **Launch the robotLocalization node (choose one):**
+      ```bash
+      roslaunch cssr_system cssrSystemLaunchRobot.launch
+      ```
+
+3. **Launch the robotLocalization node:**
    
-   **Option A: Full launch with camera and transforms:**
+   **Option A: Full launch RealSense camera and robotLocalization node:**
    ```bash
    cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationLaunchRobot.launch
    ```
    
-   **Option B: Standalone node** (if camera is already launched):
+   **Option B: Run RealSense camera and robotLocalization node separately**:
+   > Run RealSense camera
+   ```bash
+   roslaunch realsense2_camera rs_camera.launch align_depth:=true
+   ```
+   > Run robotLocalization node
    ```bash
    cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && rosrun cssr_system robotLocalization
    ```
@@ -191,11 +202,11 @@ Follow these steps, running each command in different terminals:
 ### Required Topics
 
 The `robotLocalization` node requires the following topics to be available:
-- `/camera/color/image_raw` - RGB camera images
-- `/camera/aligned_depth_to_color/image_raw` - Depth images (if using depth mode)
-- `/camera/color/camera_info` - Camera intrinsic parameters
+- `/camera/color/image_raw` - RealSense RGB camera images
+- `/camera/aligned_depth_to_color/image_raw` - RealSense Depth images (if using depth mode)
+- `/camera/color/camera_info` - RealSense Camera intrinsic parameters
 - `/naoqi_driver/odom` - Robot odometry
-- `/joint_states` - Joint positions (for head yaw compensation)
+- `/joint_states` - Joint positions (for head yaw)
 
 ## Service Interface
 
@@ -351,8 +362,6 @@ rosrun tf tf_echo map odom
 - **Camera:** Intel RealSense D435/D455 or compatible RGB-D camera
 - **Markers:** ArUco markers from DICT_4X4_100 dictionary
 - **Compute:** Sufficient processing power for real-time image processing
-
-> **NOTE:** To fully understand the configuration values, data requirements, debugging processes, and the overall functionality of the robotLocalization node, please refer to the [D4.2.4 Robot Localization](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf). These manuals provide comprehensive explanations and step-by-step instructions essential for effective use and troubleshooting.
 
 ## Support
 
