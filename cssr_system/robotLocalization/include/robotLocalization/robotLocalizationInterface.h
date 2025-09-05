@@ -47,6 +47,7 @@
 #include <cssr_system/setPose.h>
 
 #define ROS_PACKAGE_NAME  "cssr_system"
+#define SOFTWARE_VERSION  "v1.0"
 
 
 // Structure for 3D landmark representation
@@ -80,7 +81,7 @@ private:
     ros::ServiceServer reset_srv_, setpose_srv_;
     
     // Timers
-    ros::Timer reset_timer_, camera_info_timer_;
+    ros::Timer reset_timer_, camera_info_timer_, heartbeat_timer_;
 
     // Configuration parameters
     bool verbose_, use_depth_, use_head_yaw_, camera_info_received_;

@@ -173,12 +173,23 @@ RobotLocalizationNode::RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(
     loadLandmarks();
 
     // Subscribers
-    odom_sub_ = nh_.subscribe(topic_map_["Odometry"], 10, &RobotLocalizationNode::odomCallback, this);
-    imu_sub_ = nh_.subscribe(topic_map_["IMU"], 10, &RobotLocalizationNode::imuCallback, this);
-    image_sub_ = it_.subscribe(topic_map_[camera_], 10, &RobotLocalizationNode::imageCallback, this);
-    depth_sub_ = it_.subscribe(topic_map_[depth_camera_], 10, &RobotLocalizationNode::depthCallback, this);
-    joint_sub_ = nh_.subscribe(topic_map_["HeadYaw"], 10, &RobotLocalizationNode::jointCallback, this);
-    camera_info_sub_ = nh_.subscribe(topic_map_["CameraInfo"], 1, &RobotLocalizationNode::cameraInfoCallback, this);
+   odom_sub_ = nh_.subscribe(topic_map_["Odometry"], 10, &RobotLocalizationNode::odomCallback, this);
+   ROS_INFO("robotLocalization: subscribed to %s", topic_map_["Odometry"].c_str());
+
+   imu_sub_ = nh_.subscribe(topic_map_["IMU"], 10, &RobotLocalizationNode::imuCallback, this);
+   ROS_INFO("robotLocalization: subscribed to %s", topic_map_["IMU"].c_str());
+
+   image_sub_ = it_.subscribe(topic_map_[camera_], 10, &RobotLocalizationNode::imageCallback, this);
+   ROS_INFO("robotLocalization: subscribed to %s", topic_map_[camera_].c_str());
+
+   depth_sub_ = it_.subscribe(topic_map_[depth_camera_], 10, &RobotLocalizationNode::depthCallback, this);
+   ROS_INFO("robotLocalization: subscribed to %s", topic_map_[depth_camera_].c_str());
+
+   joint_sub_ = nh_.subscribe(topic_map_["HeadYaw"], 10, &RobotLocalizationNode::jointCallback, this);
+   ROS_INFO("robotLocalization: subscribed to %s", topic_map_["HeadYaw"].c_str());
+
+   camera_info_sub_ = nh_.subscribe(topic_map_["CameraInfo"], 1, &RobotLocalizationNode::cameraInfoCallback, this);
+   ROS_INFO("robotLocalization: subscribed to %s", topic_map_["CameraInfo"].c_str());
 
     // Publishers
     pose_pub_ = nh_.advertise<geometry_msgs::Pose2D>("/robotLocalization/pose", 10);
@@ -214,18 +225,41 @@ RobotLocalizationNode::RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(
     // Timer for camera info timeout
     camera_info_timer_ = nh_.createTimer(ros::Duration(camera_info_timeout_), &RobotLocalizationNode::cameraInfoTimeoutCallback, this, true);
 
+    // Heartbeat timer (every 10 seconds)
+   ros::Timer heartbeat_timer_ = nh_.createTimer(ros::Duration(10.0), 
+      [this](const ros::TimerEvent&) {
+         ROS_INFO("robotLocalization: running.");
+      });
+
     ROS_INFO("Robot Localization Node initialized");
 }
 
 int main(int argc, char** argv) {
     // Initialize ROS
     ros::init(argc, argv, "robotLocalization");
+
+    // Get node name for logging
+    std::string nodeName = ros::this_node::getName();
+    if (nodeName[0] == '/') {
+        nodeName = nodeName.substr(1);
+    }
+    
+    // Copyright message on startup
+    std::string copyrightMessage = nodeName + ": " + std::string(SOFTWARE_VERSION) + 
+                                    "\n\t\t\t\tThis project is funded by the African Engineering and Technology Network (Afretec)"
+                                    "\n\t\t\t\tInclusive Digital Transformation Research Grant Programme. "
+                                    "\n\t\t\t\tWebsite: www.cssr4africa.org "
+                                    "\n\t\t\t\tThis program comes with ABSOLUTELY NO WARRANTY.";
+    
+    ROS_INFO("%s", copyrightMessage.c_str());
+    ROS_INFO("%s: start-up.", nodeName.c_str());
     
     // Create the robot localization node
     RobotLocalizationNode node;
-    
+
     // Spin to process callbacks
     ros::spin();
+
     
     // Clean up OpenCV windows if created
     cv::destroyAllWindows();
