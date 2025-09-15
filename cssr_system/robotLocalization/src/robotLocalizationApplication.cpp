@@ -226,12 +226,12 @@ RobotLocalizationNode::RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(
     camera_info_timer_ = nh_.createTimer(ros::Duration(camera_info_timeout_), &RobotLocalizationNode::cameraInfoTimeoutCallback, this, true);
 
     // Heartbeat timer (every 10 seconds)
-   ros::Timer heartbeat_timer_ = nh_.createTimer(ros::Duration(10.0), 
+    heartbeat_timer_ = nh_.createTimer(ros::Duration(10.0), 
       [this](const ros::TimerEvent&) {
          ROS_INFO("robotLocalization: running.");
       });
 
-    ROS_INFO("Robot Localization Node initialized");
+    ROS_INFO("robotLocalization node initialized");
 }
 
 int main(int argc, char** argv) {

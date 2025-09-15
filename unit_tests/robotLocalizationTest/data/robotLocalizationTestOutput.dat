@@ -1,6 +1,6 @@
 Robot Localization Test Report
 ==========================================
-Date: 2025-09-04 18:05:23
+Date: 2025-09-12 11:11:53
 Landmark File: arucoLandmarks.json
 Topics File: pepperTopics.dat
 Camera Info File: cameraInfo.json
@@ -34,7 +34,7 @@ Set Pose Test 5: PASS
 
 Pose Reset Test: PASS
 	Expected: (2, 7.8, 270)
-	Actual: (4.52655, 7.37564, 237.329)
+	Actual: (-8.19915, 13.2686, 296.526)
 	Description: Initial position for reset test
 
 Set Pose Service Availability: PASS
@@ -50,41 +50,41 @@ Set Pose Service Call: PASS
 	Arguments: 2.0 7.8 270.0
 
 Accuracy Test 1: PASS
-	Position Error: 0 meters
-	Orientation Error: 2.11806e-07 degrees
+	Position Error: 9.93014e-16 meters
+	Orientation Error: 0 degrees
 
 Accuracy Test 2: PASS
-	Position Error: 0.000333753 meters
-	Orientation Error: 0.000337173 degrees
+	Position Error: 0 meters
+	Orientation Error: 0 degrees
 
 Accuracy Test 3: PASS
 	Position Error: 0 meters
-	Orientation Error: 2.56132e-06 degrees
+	Orientation Error: 0 degrees
 
 Marker Detection Test 1: PASS
 	Marker ID: 1
 	Detected: Yes
 
 	Test Result: Marker detected and pose updated
-	Pose Change: 2.63209 meters
+	Pose Change: 14.8844 meters
 	Position Before: (4, 4.8)
-	Position After: (4.52577, 7.37905)
+	Position After: (-8.34918, 13.1092)
 Marker Detection Test 2: PASS
 	Marker ID: 2
 	Detected: Yes
 
 	Test Result: Marker detected and pose updated
-	Pose Change: 4.04144 meters
+	Pose Change: 12.1167 meters
 	Position Before: (1, 5.4)
-	Position After: (4.52616, 7.37471)
+	Position After: (-8.34798, 13.109)
 Marker Detection Test 3: PASS
 	Marker ID: 3
 	Detected: Yes
 
 	Test Result: Marker detected and pose updated
-	Pose Change: 3.10028 meters
-	Position Before: (1.6, 8.40021)
-	Position After: (4.52535, 7.37353)
+	Pose Change: 10.9613 meters
+	Position Before: (1.6, 8.4)
+	Position After: (-8.24659, 13.216)
 Rapid Pose Set Stability Test: PASS
 	Service: /robotLocalization/set_pose
 	Arguments: Multiple rapid calls

@@ -19,6 +19,7 @@
             <arg name="depth_height" value="480" />
             <arg name="depth_fps" value="30" />
             <arg name="align_depth" value="true" />
+            <arg name="output" value="log" />
       </include>
     </group>
 

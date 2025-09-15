@@ -59,8 +59,10 @@ void RobotLocalizationNode::loadTopicNames() {
                 }
             }
         }
-        
-        ROS_INFO("Loaded %zu topics from %s", topic_map_.size(), topics_file_.c_str());
+
+        if (verbose_) {
+            ROS_INFO("Loaded %zu topics from %s", topic_map_.size(), topics_file_.c_str());
+        }
     } catch (const std::exception& e) {
         ROS_ERROR("Error reading topics file %s: %s", topics_file_.c_str(), e.what());
     }
@@ -190,7 +192,7 @@ void RobotLocalizationNode::cameraInfoCallback(const sensor_msgs::CameraInfo::Co
     }
     camera_info_received_ = true;
     camera_info_timer_.stop();
-    ROS_INFO("Received camera intrinsics: fx=%.2f, fy=%.2f, cx=%.2f, cy=%.2f", fx_, fy_, cx_, cy_);
+    ROS_INFO("Received camera intrinsics from camera: fx=%.2f, fy=%.2f, cx=%.2f, cy=%.2f", fx_, fy_, cx_, cy_);
 }
 
 void RobotLocalizationNode::cameraInfoTimeoutCallback(const ros::TimerEvent& event) {
@@ -391,14 +393,23 @@ bool RobotLocalizationNode::computeAbsolutePose() {
 
         // Print detected markers
         if (!marker_ids.empty()) {
+            if (verbose_) {
+                ROS_INFO("Detected markers:");
+            }
             for (size_t i = 0; i < marker_ids.size(); ++i) {
                 std::stringstream ss;
-                ss << "Marker " << marker_ids[i] << " corners: ";
+                if (verbose_) {
+                    ss << "Marker " << marker_ids[i] << " corners: ";
+                }
                 for (size_t j = 0; j < marker_corners[i].size(); ++j) {
-                    ss << "(" << marker_corners[i][j].x << "," << marker_corners[i][j].y << ")";
+                    if (verbose_) {
+                        ss << "(" << marker_corners[i][j].x << "," << marker_corners[i][j].y << ")";
+                    }
                     if (j < marker_corners[i].size() - 1) ss << " ";
                 }
-                ROS_INFO("%s", ss.str().c_str());
+                if (verbose_) {
+                    ROS_INFO("%s", ss.str().c_str());
+                }
             }
         } else {
             ROS_INFO("No markers detected");
@@ -426,10 +437,12 @@ bool RobotLocalizationNode::computeAbsolutePose() {
         double x2 = projected_landmarks_[id2].first, y2 = projected_landmarks_[id2].second;
         double x3 = projected_landmarks_[id3].first, y3 = projected_landmarks_[id3].second;
 
-        ROS_INFO("Used Markers:");
-        ROS_INFO("Marker 1: ID %d (%.3f, %.3f)", id1, x1, y1);
-        ROS_INFO("Marker 2: ID %d (%.3f, %.3f)", id2, x2, y2);
-        ROS_INFO("Marker 3: ID %d (%.3f, %.3f)", id3, x3, y3);
+        if (verbose_) {
+            ROS_INFO("Used Markers:");
+            ROS_INFO("Marker 1: ID %d (%.3f, %.3f)", id1, x1, y1);
+            ROS_INFO("Marker 2: ID %d (%.3f, %.3f)", id2, x2, y2);
+            ROS_INFO("Marker 3: ID %d (%.3f, %.3f)", id3, x3, y3);
+        }
 
         // Check for collinear markers and small landmark triangle area
         double landmark_triangle_area = std::abs((x2-x1)*(y3-y1) - (y2-y1)*(x3-x1)) / 2.0;
@@ -453,16 +466,20 @@ bool RobotLocalizationNode::computeAbsolutePose() {
             return false;
         }
 
-        ROS_INFO("Computed angles: alpha1=%.3f degrees, alpha2=%.3f degrees", alpha1, alpha2);
+        if (verbose_) {
+            ROS_INFO("Computed angles: alpha1=%.3f degrees, alpha2=%.3f degrees", alpha1, alpha2);
+        }
 
         // Triangulation
         double xc1a, yc1a, xc1b, yc1b, xc2a, yc2a, xc2b, yc2b, r1, r2;
         circle_centre(x2, y2, x1, y1, alpha1, &xc1a, &yc1a, &xc1b, &yc1b, &r1);
         circle_centre(x3, y3, x2, y2, alpha2, &xc2a, &yc2a, &xc2b, &yc2b, &r2);
 
-        // Log circle parameters for debugging
-        ROS_INFO("Circle 1: center1=(%.3f, %.3f), center2=(%.3f, %.3f), radius=%.3f", xc1a, yc1a, xc1b, yc1b, r1);
-        ROS_INFO("Circle 2: center1=(%.3f, %.3f), center2=(%.3f, %.3f), radius=%.3f", xc2a, yc2a, xc2b, yc2b, r2);
+        if (verbose_) {
+            // Log circle parameters for debugging
+            ROS_INFO("Circle 1 centers: (%.3f, %.3f), (%.3f, %.3f) with radius %.3f", xc1a, yc1a, xc1b, yc1b, r1);
+            ROS_INFO("Circle 2 centers: (%.3f, %.3f), (%.3f, %.3f) with radius %.3f", xc2a, yc2a, xc2b, yc2b, r2);
+        }
 
         // Try all 4 combinations of circle centres
         double best_xr = 0, best_yr = 0;
@@ -481,7 +498,9 @@ bool RobotLocalizationNode::computeAbsolutePose() {
             {xc1b, yc1b, xc2b, yc2b, "farthest-farthest"}
         };
 
-        ROS_INFO("=== Testing all circle combinations ===");
+        if (verbose_) {
+            ROS_INFO("=== Testing all circle combinations ===");
+        }
 
         for (const auto& combo : combinations) {
             double x1_int, y1_int, x2_int, y2_int;
@@ -490,7 +509,7 @@ bool RobotLocalizationNode::computeAbsolutePose() {
                                                 &x1_int, &y1_int, &x2_int, &y2_int);
             
             if (result == 0) {
-                ROS_INFO("%s: No intersection", combo.name.c_str());
+                ROS_INFO("%s: No circle intersection for localization", combo.name.c_str());
                 continue;
             }
             
@@ -510,8 +529,10 @@ bool RobotLocalizationNode::computeAbsolutePose() {
                 
                 // ONLY reject obvious numerical errors (extremely close to landmarks)
                 if (min_dist_to_landmarks < 0.01) {
-                    ROS_INFO("%s point %d: (%.3f, %.3f) - REJECTED: Numerical error (%.6f)", 
-                            combo.name.c_str(), i+1, xr_test, yr_test, min_dist_to_landmarks);
+                    if (verbose_) {
+                        ROS_INFO("%s point %d: (%.3f, %.3f) - REJECTED: Numerical error (%.6f)", 
+                                combo.name.c_str(), i+1, xr_test, yr_test, min_dist_to_landmarks);
+                    }
                     continue;
                 }
                 
@@ -577,24 +598,29 @@ bool RobotLocalizationNode::computeAbsolutePose() {
                 
                 // Combine all geometric factors
                 double score = area_score * distance_score * angle_score * separation_score * proximity_penalty;
-                
-                ROS_INFO("%s point %d: (%.3f, %.3f) - Score: %.3f", 
-                        combo.name.c_str(), i+1, xr_test, yr_test, score);
-                ROS_INFO("  Components: area=%.2f, dist=%.2f(%.1fm), angle=%.2f(%.1f°), sep=%.2f, prox=%.2f", 
-                        area_score, distance_score, avg_dist_to_landmarks, angle_score, min_angle_deg, 
-                        separation_score, proximity_penalty);
+                if (verbose_) {
+                    ROS_INFO("%s point %d: (%.3f, %.3f) - Score: %.3f", 
+                            combo.name.c_str(), i+1, xr_test, yr_test, score);
+                    ROS_INFO("  Components: area=%.2f, dist=%.2f(%.1fm), angle=%.2f(%.1f°), sep=%.2f, prox=%.2f", 
+                            area_score, distance_score, avg_dist_to_landmarks, angle_score, min_angle_deg, 
+                            separation_score, proximity_penalty);
+                }
                 
                 if (score > best_score) {
                     best_score = score;
                     best_xr = xr_test;
                     best_yr = yr_test;
                     found_valid = true;
-                    ROS_INFO("  -> NEW BEST SOLUTION!");
+                    if (verbose_) {
+                        ROS_INFO("  -> NEW BEST SOLUTION!");
+                    }
                 }
             }
         }
 
-        ROS_INFO("=== Final selection: (%.3f, %.3f) with score %.3f ===", best_xr, best_yr, best_score);
+        if (verbose_) {
+            ROS_INFO("=== Final selection: (%.3f, %.3f) with score %.3f ===", best_xr, best_yr, best_score);
+        }
 
         if (!found_valid) {
             ROS_WARN("No valid triangulation solution found!");
@@ -604,17 +630,19 @@ bool RobotLocalizationNode::computeAbsolutePose() {
         double xr = best_xr;
         double yr = best_yr;
 
-        // Debug information
-        ROS_INFO("=== Debug Information ===");
-        ROS_INFO("Distance between landmarks: d12=%.3f, d23=%.3f, d13=%.3f", 
-                std::sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1)),
-                std::sqrt((x3-x2)*(x3-x2) + (y3-y2)*(y3-y2)),
-                std::sqrt((x3-x1)*(x3-x1) + (y3-y1)*(y3-y1)));
-        ROS_INFO("Robot distance from landmarks: d1=%.3f, d2=%.3f, d3=%.3f",
-                std::sqrt((xr-x1)*(xr-x1) + (yr-y1)*(yr-y1)),
-                std::sqrt((xr-x2)*(xr-x2) + (yr-y2)*(yr-y2)),
-                std::sqrt((xr-x3)*(xr-x3) + (yr-y3)*(yr-y3)));
-        ROS_INFO("Computed robot position: (%.3f, %.3f)", xr, yr);
+        if (verbose_) {
+            // Debug information
+            ROS_INFO("=== Debug Information ===");
+            ROS_INFO("Distance between landmarks: d12=%.3f, d23=%.3f, d13=%.3f", 
+                    std::sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1)),
+                    std::sqrt((x3-x2)*(x3-x2) + (y3-y2)*(y3-y2)),
+                    std::sqrt((x3-x1)*(x3-x1) + (y3-y1)*(y3-y1)));
+            ROS_INFO("Robot distance from landmarks: d1=%.3f, d2=%.3f, d3=%.3f",
+                    std::sqrt((xr-x1)*(xr-x1) + (yr-y1)*(yr-y1)),
+                    std::sqrt((xr-x2)*(xr-x2) + (yr-y2)*(yr-y2)),
+                    std::sqrt((xr-x3)*(xr-x3) + (yr-y3)*(yr-y3)));
+            ROS_INFO("Computed robot position: (%.3f, %.3f)", xr, yr);
+        }
 
         // Simple sanity check - only reject truly absurd results
         double max_distance = std::max({
@@ -630,7 +658,6 @@ bool RobotLocalizationNode::computeAbsolutePose() {
 
         // Compute yaw using first marker
         double theta = computeYaw(marker_centers[0], x1, y1, xr, yr);
-        ROS_INFO("Theta: %.3f", theta);
 
         // Update pose
         baseline_pose_.x = xr;
@@ -647,7 +674,7 @@ bool RobotLocalizationNode::computeAbsolutePose() {
         adjustment_y_ = initial_robot_y - odom_y_;
         adjustment_theta_ = initial_robot_theta - odom_theta_;
 
-        ROS_INFO("Robot Pose: x=%.3f, y=%.3f, theta=%.3f degrees", xr, yr, theta * 180.0 / M_PI);
+        ROS_INFO("ROBOT POSE: x = %.3f, y = %.3f, theta = %.3f degrees", xr, yr, theta * 180.0 / M_PI);
         if (verbose_) {
             cv::imshow("ArUco Markers", output_image);
             cv::waitKey(1);
@@ -748,6 +775,7 @@ bool RobotLocalizationNode::computeAbsolutePoseWithDepth() {
 
     // Print detected markers
     if (!marker_ids.empty()) {
+        ROS_INFO("Detected markers:");
         for (size_t i = 0; i < marker_ids.size(); ++i) {
             std::stringstream ss;
             ss << "Marker " << marker_ids[i] << " corners: ";
@@ -772,7 +800,9 @@ bool RobotLocalizationNode::computeAbsolutePoseWithDepth() {
         if (projected_landmarks_.find(marker_ids[i]) != projected_landmarks_.end() && !std::isnan(distance)) {
             markers.push_back({marker_ids[i], projected_landmarks_[marker_ids[i]].first, projected_landmarks_[marker_ids[i]].second, distance});
         }
-        ROS_INFO("Marker ID %d: Distance = %.3f m", marker_ids[i], distance);
+        if (verbose_) {
+            ROS_INFO("Marker ID %d: Distance = %.3f m", marker_ids[i], distance);
+        }
     }
 
     std::sort(markers.begin(), markers.end(), 
@@ -781,10 +811,12 @@ bool RobotLocalizationNode::computeAbsolutePoseWithDepth() {
             return std::get<3>(a) < std::get<3>(b); // Sort by distance (closest first)
         });
 
-    ROS_INFO("Detected %zu markers:", markers.size());
-    for (const auto& marker : markers) {
-        ROS_INFO("  Marker ID %d: Position (%.3f, %.3f), Distance = %.3f m", 
-                std::get<0>(marker), std::get<1>(marker), std::get<2>(marker), std::get<3>(marker));
+    if (verbose_) {
+        ROS_INFO("Detected %zu markers:", markers.size());
+        for (const auto& marker : markers) {
+            ROS_INFO("  Marker ID %d: Position (%.3f, %.3f), Distance = %.3f m", 
+                    std::get<0>(marker), std::get<1>(marker), std::get<2>(marker), std::get<3>(marker));
+        }
     }
 
     if (markers.size() < 3) {
@@ -817,8 +849,11 @@ bool RobotLocalizationNode::computeAbsolutePoseWithDepth() {
     double xr2 = xm - h * (y2 - y1) / d12;
     double yr2 = ym + h * (x2 - x1) / d12;
 
-    ROS_INFO("Solution 1: %.3f, %.3f", xr1, yr1);
-    ROS_INFO("Solution 2: %.3f, %.3f", xr2, yr2);
+    if (verbose_) {
+        ROS_INFO("Circle intersection solutions:");
+        ROS_INFO("Solution 1: %.3f, %.3f", xr1, yr1);
+        ROS_INFO("Solution 2: %.3f, %.3f", xr2, yr2);
+    }
 
     // Check which solution satisfies the third circle
     double dist1 = std::sqrt((xr1 - x3) * (xr1 - x3) + (yr1 - y3) * (yr1 - y3));
@@ -919,9 +954,11 @@ double RobotLocalizationNode::computeYaw(const std::pair<double, double>& marker
     if (yaw_positive < 0) {
         yaw_positive += 360.0;
     }
-    
-    ROS_INFO("Theta=%.3f degrees (positive: %.3f degrees)", calibrated_yaw * 180.0 / M_PI, yaw_positive);
-    
+
+    if (verbose_) {
+        ROS_INFO("Theta=%.3f degrees (positive: %.3f degrees)", calibrated_yaw * 180.0 / M_PI, yaw_positive);
+    }
+
     return calibrated_yaw;
 }
 
