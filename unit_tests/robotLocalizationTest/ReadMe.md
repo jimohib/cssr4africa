@@ -1,253 +1,336 @@
-<div align="center">
-  <h1>Robot Localization Unit Test</h1>
-</div>
+# Robot Localization Unit Test
 
 <div align="center">
   <img src="CSSR4AfricaLogo.svg" alt="CSSR4Africa Logo" style="width:50%; height:auto;">
 </div>
 
-This module provides unit tests for the `robotLocalization` node within the CSSR4Africa project (`cssr_system` package). The unit tests validate the communication, computation, and configuration functionality of the component across two different testing environments: physical robot, and test harness with controlled data. The results are logged in the file `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/test_data/robotLocalizationTestOutput.dat` for the physical robot and `~/workspace/pepper_sim_ws/src/cssr4africa/unit_tests/robotLocalizationTest/test_data/robotLocalizationTestOutput.dat` for the simulator robot.
+This module provides comprehensive unit tests for the `robotLocalization` node within the CSSR4Africa project (`cssr_system` package). The test suite validates pose setting, pose reset functionality, marker detection, localization accuracy, service integration, and system stability using real robot hardware and ArUco markers.
+
+The package implements testing of core localization functionalities, including triangulation and trilateration algorithms, service response validation, accuracy measurements, and robustness testing. The system leverages Google Test framework and integrates with the existing CSSR4Africa robotics infrastructure.
+
+To accommodate diverse testing scenarios, parameters such as individual test categories, accuracy tolerances, and output verbosity are configurable. This package is designed for use with physical Pepper robots and integrates with Intel RealSense cameras for marker detection testing.
 
 # Documentation
-Accompanying this code is the deliverable report that provides a detailed explanation of this node and its software. The deliverable report can be found in [D4.2.4 Robot Localization](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf).
+Accompanying this code is comprehensive test documentation that provides detailed explanation of the test architecture, implementation, and validation results. The deliverable report can be found in [D4.2.4 Robot Localization](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf).
 
-# Run the Robot Localization Unit Test 
-## Physical Robot 
+# Run the Robot Localization Test
+
 ### Steps
 1. **Install the required software components:**
+   
+   Set up the development environment for testing the Pepper robot localization system. Use the [CSSR4Africa Software Installation Manual](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D3.3.pdf). 
 
-  Install the required software components to instantiate and set up the development environment for controlling the Pepper robot in both physical and simulated environments. Use the [CSSR4Africa Software Installation Manual](https://github.com/cssr4africa/cssr4africa/blob/main/docs/D3.3_Software_Installation_Manual.pdf).
-
-  **Install Intel RealSense SDK and ROS Wrapper (For the Intel realsense camera):**
+   **Install Intel RealSense SDK and ROS Wrapper:**
    
    - Add Intel server to the list of repositories:
       ```bash
-      sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE || sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE
+      sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE
       sudo add-apt-repository "deb https://librealsense.intel.com/Debian/apt-repo $(lsb_release -cs) main" -u
       ```
    
-   - Install the Intel RealSense SDK 2.0 libraries and utilities:
+   - Install the Intel RealSense SDK 2.0 libraries:
       ```bash
       sudo apt update
       sudo apt install librealsense2-dkms librealsense2-utils librealsense2-dev librealsense2-dbg librealsense2-udev-rules
-      ```
-   
-   - Install the ROS wrapper for RealSense cameras:
-      ```bash
-      # For ROS Noetic:
       sudo apt install ros-noetic-realsense2-camera ros-noetic-realsense2-description
       ```
-   
-   - Verify the installation by connecting your RealSense camera and running:
-      ```bash
-      realsense-viewer
-      ```   
 
 2. **Clone and build the project (if not already cloned)**:
    - Move to the source directory of the workspace
       ```bash 
-         cd $HOME/workspace/pepper_rob_ws/src
-       ```
+      cd $HOME/workspace/pepper_rob_ws/src
+      ```
    - Clone the `CSSR4Africa` software from the GitHub repository
       ```bash 
-         git clone https://github.com/cssr4africa/cssr4africa.git
-       ```
+      git clone https://github.com/cssr4africa/cssr4africa.git
+      ```
    - Build the source files
-      ```bash 
-         cd .. && source devel/setup.bash && catkin_make
-       ```
-
-3. **Install ArUco Library Package (ROS Noetic)**
-     ```bash
-        sudo apt update
-        sudo apt install ros-noetic-aruco ros-noetic-aruco-msgs ros-noetic-aruco-ros
+      ```bash
+      cd ..
+      catkin_make
+      source devel/setup.bash 
       ```
 
-4. **Update Configuration File:**
+3. **Update Test Configuration File:**
    
-   Navigate to `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/config/robotLocalizationTestConfiguration.ini` and `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/launch/*.launch`  and update the configuration according to the key-value pairs below:
+   Navigate to the test configuration file and update according to your testing needs:
+   ```bash
+   $HOME/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/config/robotLocalizationTestConfiguration.ini
+   ```
 
-   | Parameter | Description | Values |
-   |-----------|-------------|---------|
-   | `platform` | Target platform | `robot` or `simulator` |
-   | `verbose` | Diagnostic info printing | `true`, `false` |
-   | `use_depth` | Enable depth-based trilateration | `true`, `false` |
-   | `use_head_yaw` | Compensate for head rotation | `true`, `false` |
-   | `reset_interval` | Automatic pose reset interval | `5.0`, `10.0`, `30.0` |
+   | Parameter | Description | Values | Default |
+   |-----------|-------------|---------|---------|
+   | `poseSetTests` | Enable pose setting tests | `true`, `false` | `true` |
+   | `poseResetTests` | Enable pose reset tests | `true`, `false` | `true` |
+   | `markerDetectionTests` | Enable ArUco marker detection tests | `true`, `false` | `true` |
+   | `accuracyTests` | Enable localization accuracy tests | `true`, `false` | `true` |
+   | `serviceTests` | Enable service availability tests | `true`, `false` | `true` |
+   | `stabilityTests` | Enable system stability tests | `true`, `false` | `true` |
+   | `verboseMode` | Diagnostic info printing | `true`, `false` | `true` |
 
-   - To execute the tests on the physical platform, change the first line of `robotLocalizationTestConfiguration.ini` file in the config folder to "`platform robot`". 
-   - Set up ArUco markers (DICT_4X4_100) in your environment at the coordinates specified in the test landmark data.
-  
+4. **Set up ArUco Markers:**
+   
+   Place ArUco markers (DICT_4X4_100) in your environment according to the test landmark configuration:
+   - Marker ID 1: Position (5.0, 4.8, 0.71)
+   - Marker ID 2: Position (2.0, 5.4, 0.71) 
+   - Marker ID 3: Position (2.6, 8.4, 0.71)
+   - Additional markers as defined in `data/arucoLandmarks.json`
 
-    <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
-      <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
-      <span style="color: #cccccc;">If you want to modify other configuration values, please refer to the <a href="https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf" style="color: #66b3ff;">D4.2.4 Robot Localization</a>. Otherwise, the preferred values are the ones already set in the `robotLocalizationTestConfiguration.ini` file.</span>
-  </div>
+5. **Run the `robotLocalizationTest`:**
 
-5. **Run the `robotLocalizationTest` from the`unit_tests`  package**. 
+   > **NOTE:** To launch the RealSense camera when connected to a Jetson, refer to the [CSSR4Africa Software Installation Manual](https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D3.3.pdf) for instructions.
 
-    Follow below steps, run in different terminals.
-    -  Source the workspace in first terminal:
+   **Approach 1: Test Execution using Launch Files (Recommended)**
+   
+   Run the complete test suite using two separate terminals:
+    
+   - **Terminal 1** - Launch robot interface (also launches the RealSense camera):
         ```bash
-          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash
-        ```
-    -  Launch the robot:
-        ```bash
-          roslaunch pepper_interface_tests actuatorTestLaunchRobot.launch robot_ip:=<robot_ip> roscore_ip:=<roscore_ip> network_interface:=<network_interface>
-        ```
-        <div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
-         <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
-         <span style="color: #cccccc;">Ensure that the IP addresses <code>robot_ip</code> and <code>roscore_ip</code> and the network interface <code>network_interface</code> are correctly set based on your robot's configuration and your computer's network interface. </span>
-        </div>
-    - Open a new terminal to launch the robotLocalizationTest (which launches the robotLocalization node and run tests on it).
-
-      Launch the test on Robot
-        ```bash
-          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationTestLaunchRobot.launch
-        ```
-      Launch the Harness Test. This creates drivers and stubs for pose validation.
-        ```bash
-          cd $HOME/workspace/pepper_rob_ws && source devel/setup.bash && roslaunch cssr_system robotLocalizationTestLaunchHarness.launch
+        cd $HOME/workspace/pepper_rob_ws
+        source devel/setup.bash
+        roslaunch unit_tests robotLocalizationTestLaunchRobot.launch robot_ip:=<robot_ip> roscore_ip:=<roscore_ip> network_interface:=<network_interface>
         ```
 
+      > **NOTE:** Ensure the IP addresses `robot_ip`, `roscore_ip`, and the `network_interface` are correctly set based on your robot's configuration and your computer's network interface. To launch using the default values that have been set in the launch file, simply run:
 
-## Tests Executed
-### Test A: Communication Functionality Validation
-The Test A contains the following:
-  - `Test A_1`: Input Data Processing (RGB images, depth images, odometry, camera calibration)
-  - `Test A_2`: Output Data Generation (pose publication, marker image publication)
+      ```bash
+      roslaunch unit_tests robotLocalizationTestLaunchRobot.launch
+      ```
+      > If the Realsense camera is to be launched separately (e.g when connected and launched from a Jetson), simply pass the argument `realsense_camera:=false` in the launch command.
 
-The robot is expected to perform the following:
-- Process RGB and Depth images and detect ArUco markers
-- Handle depth images for trilateration when enabled
-- Publish pose estimates at 1-10 Hz
-- Generate annotated marker images showing detection results
+   - **Terminal 2** - Launch test harness (launches and run the tests):
+        ```bash
+        cd $HOME/workspace/pepper_rob_ws 
+        source devel/setup.bash
+        roslaunch unit_tests robotLocalizationTestLaunchTestHarness.launch
+        ```
+        > This command launches the robot localization node and the robot localization test node that runs all the tests with the physical robot. To run the test using drivers (i.e without the robot localization node and the physical robot), set the argument `launch_drivers:=true` in the launch command.
 
-### Test B: Computation Functionality Validation
-The Test B contains the following:
-  - `Test B_1`: Triangulation Algorithm Testing (RGB-only pose computation)
-  - `Test B_2`: Trilateration Algorithm Testing (RGB-D pose computation with depth)
+   **Approach 2: Manual Step-by-Step Execution**
+   
+   For individual component testing and debugging:
+   
+   - **Terminal 1** - Launch the Realsense Camera: 
+        ```bash
+        roslaunch realsense2_camera rs_camera.launch align_depth:=true
+        ```
+        > Ensure the Realsense camera is connected and installed, or follow the instructions in the Software Installation Manual as provided above when connected to a Jetson.
 
-The robot is expected to perform the following:
-- Achieve position accuracy within ±0.2m for triangulation mode
-- Achieve position accuracy within ±0.5m for trilateration mode
-- Maintain orientation accuracy within ±5° under good conditions
-- Perform sensor fusion between odometry and landmark detection
+   - **Terminal 2** - Launch robot interface (bring up the robot): 
+        ```bash
+        cd $HOME/workspace/pepper_rob_ws
+        source devel/setup.bash
+        roslaunch unit_tests robotLocalizationTestLaunchRobot.launch realsense_camera:=false
+        ```
+        
+   - **Terminal 3** - Start robot localization node:
+        ```bash
+        cd $HOME/workspace/pepper_rob_ws
+        source devel/setup.bash
+        rosrun cssr_system robotLocalization
+        ```
+        
+   - **Terminal 4** - Run localization tests:
+        ```bash
+        cd $HOME/workspace/pepper_rob_ws
+        source devel/setup.bash
+        rosrun unit_tests robotLocalizationTest
+        ```
 
-### Test C: Configuration Functionality Validation
-The Test C contains the following:
-  - `Test C_1`: Parameter Impact Testing (verbose mode, depth usage, reset intervals)
-  - `Test C_2`: Landmark and Camera Configuration Testing (marker positions, camera calibration)
+## Test Categories and Coverage
 
-The robot is expected to perform the following:
-- Respond appropriately to configuration parameter changes
-- Handle different landmark configurations and camera calibrations
-- Demonstrate robust performance across various parameter settings
-- Show degraded performance with intentionally incorrect configurations
+### 1. Pose Setting Tests (`TestPoseSet`)
+- **Purpose**: Validates the `/robotLocalization/set_pose` service functionality
+- **Test Scenarios**:
+  - Position 1 (2.0, 7.8, 270.0°)
+  - Position 2 (2.6, 6.0, 180.0°)
+  - Position 3 (5.0, 4.8, 90.0°)
+  - Corner positions and edge cases
+- **Success Criteria**: Service responds successfully and pose is set within tolerance
 
-## Results
-The results of the test is expected to be logged in the `~/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat` file for the physical robot and `~/workspace/pepper_sim_ws/src/cssr4africa/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat` file for the simulator robot. It contains the test ran, the input commands and the status of the test. Below is an output of the test when some sample configuration is set:
+### 2. Pose Reset Tests (`TestPoseReset`)
+- **Purpose**: Validates the `/robotLocalization/reset_pose` service and marker-based localization
+- **Test Scenarios**:
+  - Reset from known position
+  - Marker detection and triangulation/trilateration
+  - Pose correction accuracy
+- **Success Criteria**: Service executes and pose resets.
 
-```
-Robot Localization Test Report: robot
-====================================
-Date: 2025-06-23 14:03:22
+### 3. Service Tests (`TestServices`)
+- **Purpose**: Validates service availability and proper response formats
+- **Test Scenarios**:
+  - Service availability checks
+  - Valid parameter handling
+  - Response format validation
+- **Success Criteria**: All services available and respond correctly
 
-Test A: Communication Functionality
-	Input Data Processing
-		RGB Image Processing     : PASSED
-		Depth Image Processing   : PASSED  
-		Odometry Processing      : PASSED
-		Camera Info Processing   : PASSED
-	Output Data Generation
-		Pose Publication         : PASSED
-		Marker Image Publication : PASSED
-	Result: PASSED
+### 4. Accuracy Tests (`TestAccuracy`)
+- **Purpose**: Measures localization precision and accuracy
+- **Test Scenarios**:
+  - High precision positions (±5cm, ±2°)
+  - Medium distance positions
+  - Near-landmark precision tests
+- **Success Criteria**: Position error < 5cm, orientation error < 2°
 
-Test B: Computation Functionality  
-	Triangulation Algorithm
-		Position Accuracy        : PASSED (±0.2m)
-		Orientation Accuracy     : PASSED (±5.0°)
-	Trilateration Algorithm  
-		Position Accuracy        : PASSED (±0.5m)
-		Orientation Accuracy     : PASSED (±8.0°)
-	Sensor Fusion
-		Odometry Integration     : PASSED
-		Drift Correction        : PASSED
-	Result: PASSED
+### 5. Marker Detection Tests (`TestMarkerDetection`)
+- **Purpose**: Validates ArUco markers detection
+- **Test Scenarios**:
+  - Single marker visibility
+  - Multiple marker triangulation
+- **Success Criteria**: Markers detected when visible, pose updates when possible
 
-Test C: Configuration Functionality
-	Parameter Impact Testing
-		Verbose Mode Toggle      : PASSED
-		Depth Usage Toggle       : PASSED
-		Reset Interval Change    : PASSED
-		Head Yaw Compensation    : PASSED
-	Configuration Validation
-		Landmark Positions       : PASSED
-		Camera Calibration       : PASSED
-		Invalid Config Handling  : PASSED
-	Result: PASSED
+### 6. Stability Tests (`TestStability`)
+- **Purpose**: Tests system robustness and edge case handling
+- **Test Scenarios**:
+  - Rapid successive pose sets
+  - Edge case coordinates (boundaries, negative angles)
+  - Service timeout resilience
+- **Success Criteria**: System remains stable under stress conditions
 
-Performance Metrics:
-	Pose Publication Rate    : 8.5 Hz
-	Position Accuracy (RGB)  : ±0.2m
-	Position Accuracy (RGB-D): ±0.5m  
-	Orientation Accuracy     : ±5.0°
-	Landmark Detection Rate  : 94%
-	System Latency          : 285ms
+## Test Results and Output
 
-Overall Test Result: PASSED
-```
-
-## Performance Metrics and Success Criteria
-
-### Expected Performance Metrics
-- **Pose Publication Rate**: 1-10 Hz
-- **Position Accuracy**: ±0.2m (RGB), ±0.5m (RGB-D)
-- **Orientation Accuracy**: ±5° (RGB), ±8° (RGB-D)
-- **Landmark Detection Rate**: >90% when 3+ markers visible
-- **System Latency**: <500ms from image to pose
-
-### Success Criteria
-1. **Startup**: Copyright message displayed, all subscriptions confirmed
-2. **Communication**: All input topics received, output topics publishing
-3. **Computation**: Pose estimates within accuracy tolerances
-4. **Configuration**: Parameter changes produce expected behavior
-5. **Robustness**: Graceful handling of missing data, invalid configurations
-6. **Heartbeat**: "robotLocalization: running" message every 10 seconds
-
-### Test Commands for Manual Validation
+**Test Report Location:**
 ```bash
-# Monitor pose output
-rostopic echo /robotLocalization/pose
-
-# View marker detection
-rosrun image_view image_view image:=/robotLocalization/marker_image
-
-# Test services
-rosservice call /robotLocalization/set_pose 2.0 6.6 0.0
-rosservice call /robotLocalization/reset_pose
-
-# Check performance
-rostopic hz /robotLocalization/pose
-rostopic hz /camera/color/image_raw
+$HOME/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat
 ```
 
-## 
-<div style="background-color: #1e1e1e; padding: 15px; border-radius: 4px; border: 1px solid #404040; margin: 10px 0;">
-      <span style="color: #ff3333; font-weight: bold;">NOTE: </span>
-      <span style="color: #cccccc;">To fully understand the configuration values, data requirements, debugging processes, and the overall functionality of the robotLocalizationTest node, please refer to the <a href="https://cssr4africa.github.io/deliverables/CSSR4Africa_Deliverable_D4.2.4.pdf" style="color: #66b3ff;">D4.2.4 Robot Localization</a>. These manuals provide comprehensive explanations and step-by-step instructions essential for effective use and troubleshooting.</span>
-  </div>
-  
+**Example Test Output:**
+```
+Robot Localization Test Report
+==========================================
+Date: 2025-01-15 14:30:22
+Landmark File: arucoLandmarks.json
+Topics File: pepperTopics.dat
+Camera Info File: cameraInfo.json
+Verbose Mode: true
+Test Method: Service-based testing with pose verification
+
+Pose Set Test 1: PASS
+    Expected: (2, 7.8, 270)
+    Actual: (2.01, 7.79, 269.8)
+    Description: Home position
+
+Pose Set Test 2: PASS
+    Expected: (2.6, 6, 180)
+    Actual: (2.58, 6.02, 180.3)
+    Description: Office area
+
+Service Availability Test: PASS
+    Service: /robotLocalization/set_pose
+    Arguments: N/A
+
+Accuracy Test 1: PASS
+    Position Error: 0.03 meters
+    Orientation Error: 1.2 degrees
+
+Marker Detection Test 1: PASS
+    Marker ID: 1
+    Detected: Yes
+
+Stability Test: PASS
+    Service: /robotLocalization/set_pose
+    Arguments: Multiple rapid calls
+
+==========================================
+Test Execution Summary
+==========================================
+Total Tests: 5
+Passed Tests: 5
+Failed Tests: 0
+Overall Result: ALL TESTS PASSED
+Test report location: /home/user/workspace/pepper_rob_ws/src/.../robotLocalizationTestOutput.dat
+```
+
+## Service Commands for Manual Testing
+
+**Set Robot Pose:**
+```bash
+rosservice call /robotLocalization/set_pose 2.0 7.8 270.0
+```
+
+**Reset Pose (Marker-based Localization):**
+```bash
+rosservice call /robotLocalization/reset_pose
+```
+
+**Monitor Pose Updates:**
+```bash
+rostopic echo /robotLocalization/pose
+```
+
+**View Marker Detection:**
+```bash
+rosrun image_view image_view image:=/robotLocalization/marker_image
+```
+
+## Troubleshooting
+
+**Common Issues and Solutions:**
+
+1. **Camera Not Detected:**
+   ```bash
+   # Verify RealSense camera
+   realsense-viewer
+   # Check camera topics
+   rostopic list | grep camera
+   ```
+
+2. **Service Unavailable:**
+   ```bash
+   # Check robotLocalization node status
+   rosnode list | grep robotLocalization
+   # Restart if needed
+   rosrun cssr_system robotLocalization
+   ```
+
+3. **Marker Detection Issues:**
+   - Ensure proper lighting conditions
+   - Check marker size and dictionary (DICT_4X4_100)
+   - Verify marker positions match landmark file
+   - Verify camera intrinsics are loaded
+
+4. **Test Failures:**
+   ```bash
+   # Check test configuration
+   cat ~/workspace/pepper_rob_ws/src/.../robotLocalizationTestConfiguration.ini
+   # Review test report for specific failures
+   cat ~/workspace/pepper_rob_ws/src/.../robotLocalizationTestOutput.dat
+   ```
+
+5. **Verification Commands:**
+   ```bash
+   # Check all required nodes
+   rosnode list | grep -E "(robotLocalization|realsense)"
+   
+   # Monitor test logs
+   rostopic echo /rosout | grep robotLocalizationTest
+   
+   # Verify camera info
+   rostopic echo /camera/color/camera_info
+   ```
+
+## Test Performance Metrics
+
+| Test Category | Expected Duration | Success Criteria |
+|---------------|------------------|------------------|
+| **Pose Set Tests** | ~15 seconds | All poses set within tolerance |
+| **Pose Reset Tests** | ~20 seconds | Service responds, potential improvement |
+| **Service Tests** | ~5 seconds | All services available |
+| **Accuracy Tests** | ~25 seconds | Position error < 5cm, angle < 2° |
+| **Marker Tests** | ~30 seconds | Detection when markers visible |
+| **Stability Tests** | ~20 seconds | No system crashes or timeouts |
+
+**Total Test Suite Duration:** ~2-3 minutes
+
 ## Support
 
 For issues or questions:
 - Create an issue on GitHub
-- Contact: <a href="mailto:dvernon@andrew.cmu.edu">dvernon@andrew.cmu.edu</a>, <a href="mailto:ioj@andrew.cmu.edu">ioj@andrew.cmu.edu</a><br>
+- Contact: <a href="mailto:ioj@alumni.cmu.edu">ioj@alumni.cmu.edu</a>, <a href="mailto:david@vernon.eu">david@vernon.eu</a><br>
 - Visit: <a href="http://www.cssr4africa.org">www.cssr4africa.org</a>
 
 ## License  
 Funded by African Engineering and Technology Network (Afretec)  
 Inclusive Digital Transformation Research Grant Programme
 
-Date:   2025-06-23
+Date: June 2025

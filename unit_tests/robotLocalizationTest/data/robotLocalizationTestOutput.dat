@@ -1,0 +1,108 @@
+Robot Localization Test Report
+==========================================
+Date: 2025-09-12 11:11:53
+Landmark File: arucoLandmarks.json
+Topics File: pepperTopics.dat
+Camera Info File: cameraInfo.json
+Verbose Mode: true
+Test Method: Service-based testing with pose verification
+
+Set Pose Test 1: PASS
+	Expected: (2, 7.8, 270)
+	Actual: (2, 7.8, 270)
+	Description: Position 1
+
+Set Pose Test 2: PASS
+	Expected: (2.6, 6, 180)
+	Actual: (2.6, 6, 180)
+	Description: Position 2
+
+Set Pose Test 3: PASS
+	Expected: (5, 4.8, 90)
+	Actual: (5, 4.8, 90)
+	Description: Position 3
+
+Set Pose Test 4: PASS
+	Expected: (0.5, 0.5, 45)
+	Actual: (0.5, 0.5, 45)
+	Description: Position 4
+
+Set Pose Test 5: PASS
+	Expected: (6.5, 9.5, 315)
+	Actual: (6.5, 9.5, 315)
+	Description: Position 5
+
+Pose Reset Test: PASS
+	Expected: (2, 7.8, 270)
+	Actual: (-8.19915, 13.2686, 296.526)
+	Description: Initial position for reset test
+
+Set Pose Service Availability: PASS
+	Service: /robotLocalization/set_pose
+	Arguments: N/A
+
+Reset Pose Service Availability: PASS
+	Service: /robotLocalization/reset_pose
+	Arguments: N/A
+
+Set Pose Service Call: PASS
+	Service: /robotLocalization/set_pose
+	Arguments: 2.0 7.8 270.0
+
+Accuracy Test 1: PASS
+	Position Error: 9.93014e-16 meters
+	Orientation Error: 0 degrees
+
+Accuracy Test 2: PASS
+	Position Error: 0 meters
+	Orientation Error: 0 degrees
+
+Accuracy Test 3: PASS
+	Position Error: 0 meters
+	Orientation Error: 0 degrees
+
+Marker Detection Test 1: PASS
+	Marker ID: 1
+	Detected: Yes
+
+	Test Result: Marker detected and pose updated
+	Pose Change: 14.8844 meters
+	Position Before: (4, 4.8)
+	Position After: (-8.34918, 13.1092)
+Marker Detection Test 2: PASS
+	Marker ID: 2
+	Detected: Yes
+
+	Test Result: Marker detected and pose updated
+	Pose Change: 12.1167 meters
+	Position Before: (1, 5.4)
+	Position After: (-8.34798, 13.109)
+Marker Detection Test 3: PASS
+	Marker ID: 3
+	Detected: Yes
+
+	Test Result: Marker detected and pose updated
+	Pose Change: 10.9613 meters
+	Position Before: (1.6, 8.4)
+	Position After: (-8.24659, 13.216)
+Rapid Pose Set Stability Test: PASS
+	Service: /robotLocalization/set_pose
+	Arguments: Multiple rapid calls
+
+Edge Case Stability Test: PASS
+	Service: /robotLocalization/set_pose
+	Arguments: Boundary and edge cases
+
+Timeout Resilience Test: PASS
+	Service: /robotLocalization/reset_pose
+	Arguments: Multiple reset calls
+
+
+==========================================
+Test Execution Summary
+==========================================
+Total Tests: 6
+Passed Tests: 6
+Failed Tests: 0
+Overall Result: ALL TESTS PASSED
+Test report location: /home/jimoh/workspace/pepper_rob_ws/src/cssr4africa/unit_tests/robotLocalizationTest/data/robotLocalizationTestOutput.dat
