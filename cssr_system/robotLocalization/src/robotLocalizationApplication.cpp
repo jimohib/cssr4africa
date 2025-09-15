@@ -36,20 +36,20 @@
     * Configuration File Parameters
         * Key                   |     Value 
         * --------------------- |     -------------------
-        * verboseMode               |     false
-        * camera               |     FrontCamera
-        * depthCamera          |     DepthRealSense
-        * useDepth             |     false
-        * resetInterval        |     30.0
-        * absolutePoseTimeout |     300.0
-        * cameraInfoTimeout   |     10.0
-        * useHeadYaw          |     false
-        * headYawJointName   |     HeadYaw
-        * mapFrame             |     map
-        * odomFrame            |     odom
-        * landmarkFile           |     /robotLocalization/data/arucoLandmarks.json
-        * topicsFile           |     /robotLocalization/data/pepperTopics.dat
-        * cameraInfoFile      |     /robotLocalization/data/cameraInfo.yaml
+        * verboseMode           |     false
+        * camera                |     FrontCamera
+        * depthCamera           |     DepthRealSense
+        * useDepth              |     false
+        * resetInterval         |     30.0
+        * absolutePoseTimeout   |     300.0
+        * cameraInfoTimeout     |     10.0
+        * useHeadYaw            |     false
+        * headYawJointName      |     HeadYaw
+        * mapFrame              |     map
+        * odomFrame             |     odom
+        * landmarkFile          |     /robotLocalization/data/arucoLandmarks.json
+        * topicsFile            |     /robotLocalization/data/pepperTopics.dat
+        * cameraInfoFile        |     /robotLocalization/data/cameraInfo.yaml
         *
  * Subscribed Topics and Message Types
     *
