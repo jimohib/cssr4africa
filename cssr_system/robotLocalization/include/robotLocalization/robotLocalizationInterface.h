@@ -45,6 +45,9 @@
 #include <vector>
 #include <cssr_system/resetPose.h>
 #include <cssr_system/setPose.h>
+#include <actionlib/client/simple_action_client.h>
+#include <control_msgs/FollowJointTrajectoryAction.h>
+#include <trajectory_msgs/JointTrajectory.h>
 
 #define ROS_PACKAGE_NAME  "cssr_system"
 #define SOFTWARE_VERSION  "v1.0"
@@ -54,6 +57,15 @@
 struct Landmark3D {
     int id;
     double x, y, z;
+};
+
+// Structure for detected marker with view information
+struct DetectedMarker {
+    int id;
+    std::vector<cv::Point2f> corners;
+    double head_yaw;
+    ros::Time timestamp;
+    std::pair<double, double> center;  // Pre-computed center for efficiency
 };
 
 // Robot localization class
@@ -85,9 +97,12 @@ private:
 
     // Configuration parameters
     bool verbose_, use_depth_, use_head_yaw_, camera_info_received_;
+    bool enable_active_scanning_;
     double reset_interval_, camera_info_timeout_, absolute_pose_timeout_;
+    double scan_timeout_, marker_memory_timeout_;
     std::string camera_, depth_camera_, head_yaw_joint_name_, map_frame_, odom_frame_;
     std::string landmark_file_, topics_file_, camera_info_file_;
+    std::vector<double> scan_positions_;
     
     // Pose tracking variables
     geometry_msgs::Pose2D current_pose_, baseline_pose_, last_odom_pose_;
@@ -103,6 +118,13 @@ private:
     double head_yaw_;
     double camera_height_;
     double fx_, fy_, cx_, cy_; // Camera intrinsics
+
+    // Active scanning components
+    typedef actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> HeadControlClient;
+    boost::shared_ptr<HeadControlClient> head_control_client_;
+    std::vector<DetectedMarker> marker_memory_;
+    bool is_scanning_;
+    double initial_head_yaw_;  // Store initial head position for restoration
     
     // Odometry adjustment variables
     geometry_msgs::Pose2D relative_pose, last_reset_pose;
@@ -135,7 +157,15 @@ private:
     // Absolute localization methods
     bool computeAbsolutePose();
     bool computeAbsolutePoseWithDepth();
-    
+
+    // Active scanning methods
+    bool computeAbsolutePoseWithActiveScanning();
+    bool moveHeadToPosition(double yaw, double pitch = 0.0);
+    void detectAndStoreMarkers(double current_head_yaw);
+    std::vector<DetectedMarker> selectBestMarkers(int count);
+    void cleanupOldMarkers();
+    double computeAngleWithHeadYaw(const DetectedMarker& m1, const DetectedMarker& m2);
+
     // Utility methods
     double computeAngle(const std::pair<double, double>& center1, const std::pair<double, double>& center2);
     double computeYaw(const std::pair<double, double>& marker_center, double marker_x, double marker_y, double robot_x, double robot_y);

@@ -168,6 +168,22 @@ RobotLocalizationNode::RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(
     topics_file_ = package_path + config.get("topicsFile", "").asString();
     camera_info_file_ = package_path + config.get("cameraInfoFile", "").asString();
 
+    // Load active scanning parameters
+    enable_active_scanning_ = config.get("enableActiveScanning", true).asBool();
+    scan_timeout_ = config.get("scanTimeout", 2.0).asDouble();
+    marker_memory_timeout_ = config.get("markerMemoryTimeout", 5.0).asDouble();
+
+    // Load scan positions (default: [-60°, -30°, 0°, 30°, 60°] in radians)
+    scan_positions_.clear();
+    if (config.isMember("scanPositions") && config["scanPositions"].isArray()) {
+        for (const auto& pos : config["scanPositions"]) {
+            scan_positions_.push_back(pos.asDouble());
+        }
+    } else {
+        // Default scan positions in radians
+        scan_positions_ = {-1.047, -0.524, 0.0, 0.524, 1.047};  // -60°, -30°, 0°, 30°, 60°
+    }
+
     // Load topics and landmarks
     loadTopicNames();
     loadLandmarks();
@@ -218,6 +234,24 @@ RobotLocalizationNode::RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(
     initial_robot_x = 0.0; initial_robot_y = 0.0; initial_robot_theta = 0.0;
     adjustment_x_ = 0.0; adjustment_y_ = 0.0; adjustment_theta_ = 0.0;
     odom_x_ = 0.0; odom_y_ = 0.0; odom_theta_ = 0.0;
+
+    // Initialize active scanning variables
+    is_scanning_ = false;
+    initial_head_yaw_ = 0.0;
+    marker_memory_.clear();
+
+    // Initialize head control client for active scanning
+    if (enable_active_scanning_) {
+        head_control_client_ = boost::make_shared<HeadControlClient>(
+            topic_map_["HeadController"], true);
+        ROS_INFO("robotLocalization: Waiting for head controller action server...");
+        if (!head_control_client_->waitForServer(ros::Duration(5.0))) {
+            ROS_WARN("robotLocalization: Head controller action server not available. Active scanning will be disabled.");
+            enable_active_scanning_ = false;
+        } else {
+            ROS_INFO("robotLocalization: Head controller connected. Active scanning enabled.");
+        }
+    }
 
     // Timer for periodic reset
     reset_timer_ = nh_.createTimer(ros::Duration(reset_interval_), &RobotLocalizationNode::resetTimerCallback, this);

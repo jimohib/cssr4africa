@@ -301,7 +301,7 @@ bool RobotLocalizationNode::setPoseCallback(cssr_system::setPose::Request& req, 
 }
 
 bool RobotLocalizationNode::resetPoseCallback(cssr_system::resetPose::Request& req, cssr_system::resetPose::Response& res) {
-    if (computeAbsolutePose()) {
+    if (computeAbsolutePoseWithActiveScanning()) {
         res.success = true;
         ROS_INFO("Pose reset successfully");
     } else {
@@ -312,7 +312,7 @@ bool RobotLocalizationNode::resetPoseCallback(cssr_system::resetPose::Request& r
 }
 
 void RobotLocalizationNode::resetTimerCallback(const ros::TimerEvent& event) {
-    computeAbsolutePose();
+    computeAbsolutePoseWithActiveScanning();
 }
 
 bool RobotLocalizationNode::computeAbsolutePose() {
@@ -1068,4 +1068,503 @@ int RobotLocalizationNode::circle_circle_intersection(double x0, double y0, doub
 
 void RobotLocalizationNode::publishPose() {
     pose_pub_.publish(current_pose_);
+}
+
+// ========== ACTIVE HEAD SCANNING METHODS ==========
+
+// Move head to a specific yaw and pitch position
+bool RobotLocalizationNode::moveHeadToPosition(double yaw, double pitch) {
+    if (!head_control_client_ || !head_control_client_->isServerConnected()) {
+        ROS_WARN("Head control client not connected");
+        return false;
+    }
+
+    // Clamp yaw and pitch to safe limits
+    yaw = std::max(-2.085, std::min(2.085, yaw));      // -119.4° to 119.4°
+    pitch = std::max(-0.706, std::min(0.445, pitch));  // -40.4° to 25.5°
+
+    // Create trajectory goal
+    control_msgs::FollowJointTrajectoryGoal goal;
+    goal.trajectory.joint_names = {"HeadPitch", "HeadYaw"};
+    goal.trajectory.points.resize(1);
+    goal.trajectory.points[0].positions = {pitch, yaw};
+    goal.trajectory.points[0].time_from_start = ros::Duration(1.0);
+
+    // Send goal and wait
+    head_control_client_->sendGoal(goal);
+    bool success = head_control_client_->waitForResult(ros::Duration(3.0));
+
+    if (!success) {
+        ROS_WARN("Head movement timed out");
+        return false;
+    }
+
+    // Wait for image to stabilize
+    ros::Duration(0.5).sleep();
+
+    if (verbose_) {
+        ROS_INFO("Moved head to yaw=%.2f, pitch=%.2f", yaw, pitch);
+    }
+
+    return true;
+}
+
+// Detect markers in current view and store them in memory
+void RobotLocalizationNode::detectAndStoreMarkers(double current_head_yaw) {
+    if (latest_image_.empty()) {
+        ROS_WARN("No image available for marker detection");
+        return;
+    }
+
+    // Detect ArUco markers
+    std::vector<int> marker_ids;
+    std::vector<std::vector<cv::Point2f>> marker_corners;
+    cv::Ptr<cv::aruco::Dictionary> dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_100);
+    cv::aruco::detectMarkers(latest_image_, dictionary, marker_corners, marker_ids);
+
+    if (verbose_ && !marker_ids.empty()) {
+        ROS_INFO("Detected %zu markers at head yaw %.2f", marker_ids.size(), current_head_yaw);
+    }
+
+    // Store each detected marker
+    for (size_t i = 0; i < marker_ids.size(); ++i) {
+        int id = marker_ids[i];
+
+        // Check if this marker is already in memory (update if so)
+        bool found = false;
+        for (auto& stored : marker_memory_) {
+            if (stored.id == id) {
+                // Update existing marker
+                stored.corners = marker_corners[i];
+                stored.head_yaw = current_head_yaw;
+                stored.timestamp = ros::Time::now();
+
+                // Update center
+                double cx = (marker_corners[i][0].x + marker_corners[i][1].x +
+                            marker_corners[i][2].x + marker_corners[i][3].x) / 4.0;
+                double cy = (marker_corners[i][0].y + marker_corners[i][1].y +
+                            marker_corners[i][2].y + marker_corners[i][3].y) / 4.0;
+                stored.center = {cx, cy};
+
+                found = true;
+                break;
+            }
+        }
+
+        // Add new marker to memory
+        if (!found) {
+            DetectedMarker marker;
+            marker.id = id;
+            marker.corners = marker_corners[i];
+            marker.head_yaw = current_head_yaw;
+            marker.timestamp = ros::Time::now();
+
+            // Compute center
+            double cx = (marker_corners[i][0].x + marker_corners[i][1].x +
+                        marker_corners[i][2].x + marker_corners[i][3].x) / 4.0;
+            double cy = (marker_corners[i][0].y + marker_corners[i][1].y +
+                        marker_corners[i][2].y + marker_corners[i][3].y) / 4.0;
+            marker.center = {cx, cy};
+
+            marker_memory_.push_back(marker);
+
+            if (verbose_) {
+                ROS_INFO("Stored new marker ID %d at head yaw %.2f", id, current_head_yaw);
+            }
+        }
+    }
+}
+
+// Remove old markers from memory based on timeout
+void RobotLocalizationNode::cleanupOldMarkers() {
+    ros::Time now = ros::Time::now();
+    marker_memory_.erase(
+        std::remove_if(marker_memory_.begin(), marker_memory_.end(),
+            [this, now](const DetectedMarker& m) {
+                return (now - m.timestamp).toSec() > marker_memory_timeout_;
+            }),
+        marker_memory_.end()
+    );
+}
+
+// Select best N markers from memory based on various criteria
+std::vector<DetectedMarker> RobotLocalizationNode::selectBestMarkers(int count) {
+    if (marker_memory_.size() <= count) {
+        return marker_memory_;
+    }
+
+    // Score each marker based on:
+    // 1. Recency (newer is better)
+    // 2. Distance from center of image (closer to center is better)
+    // 3. Known landmark (must be in projected_landmarks_)
+
+    std::vector<std::pair<double, DetectedMarker>> scored_markers;
+    ros::Time now = ros::Time::now();
+
+    for (const auto& marker : marker_memory_) {
+        // Skip unknown landmarks
+        if (projected_landmarks_.find(marker.id) == projected_landmarks_.end()) {
+            continue;
+        }
+
+        double score = 0.0;
+
+        // Recency score (0-10 points, decays over time)
+        double age = (now - marker.timestamp).toSec();
+        score += 10.0 * std::exp(-age / marker_memory_timeout_);
+
+        // Distance from center score (0-10 points)
+        double dx = marker.center.first - cx_;
+        double dy = marker.center.second - cy_;
+        double dist_from_center = std::sqrt(dx*dx + dy*dy);
+        double max_dist = std::sqrt(cx_*cx_ + cy_*cy_);
+        score += 10.0 * (1.0 - dist_from_center / max_dist);
+
+        scored_markers.push_back({score, marker});
+    }
+
+    // Sort by score (highest first)
+    std::sort(scored_markers.begin(), scored_markers.end(),
+        [](const auto& a, const auto& b) { return a.first > b.first; });
+
+    // Return top N markers
+    std::vector<DetectedMarker> best_markers;
+    for (int i = 0; i < count && i < scored_markers.size(); ++i) {
+        best_markers.push_back(scored_markers[i].second);
+    }
+
+    return best_markers;
+}
+
+// Compute angle between two markers accounting for head yaw difference
+double RobotLocalizationNode::computeAngleWithHeadYaw(const DetectedMarker& m1, const DetectedMarker& m2) {
+    // Get pixel coordinates of marker centers
+    double cx1 = m1.center.first;
+    double cy1 = m1.center.second;
+    double cx2 = m2.center.first;
+    double cy2 = m2.center.second;
+
+    // Convert pixel coordinates to camera angles (radians)
+    double angle1_cam = std::atan2(cx1 - cx_, fx_);
+    double angle2_cam = std::atan2(cx2 - cx_, fx_);
+
+    // Add head yaw to get world frame angles
+    double angle1_world = angle1_cam + m1.head_yaw;
+    double angle2_world = angle2_cam + m2.head_yaw;
+
+    // Compute angular difference
+    double angle_diff = std::abs(angle1_world - angle2_world);
+
+    // Convert to degrees
+    return angle_diff * 180.0 / M_PI;
+}
+
+// Compute absolute pose with active head scanning
+bool RobotLocalizationNode::computeAbsolutePoseWithActiveScanning() {
+    if (!enable_active_scanning_) {
+        return computeAbsolutePose();
+    }
+
+    if (projected_landmarks_.empty()) {
+        ROS_WARN("No landmarks loaded");
+        return false;
+    }
+    if (!camera_info_received_) {
+        ROS_WARN("Camera intrinsics not received");
+        return false;
+    }
+
+    // Set scanning flag
+    is_scanning_ = true;
+    initial_head_yaw_ = head_yaw_;
+
+    // Clean up old markers
+    cleanupOldMarkers();
+
+    // Detect markers in current view
+    detectAndStoreMarkers(head_yaw_);
+
+    if (verbose_) {
+        ROS_INFO("Marker memory size after current view: %zu", marker_memory_.size());
+    }
+
+    // If we already have 3+ unique markers, proceed with localization
+    if (marker_memory_.size() >= 3) {
+        if (verbose_) {
+            ROS_INFO("Found %zu markers in current view. Proceeding with localization.", marker_memory_.size());
+        }
+    } else {
+        // Need to scan for more markers
+        int markers_needed = 3 - marker_memory_.size();
+        ROS_INFO("Only found %zu markers in current view. Scanning for %d more...",
+                 marker_memory_.size(), markers_needed);
+
+        // Scan through predefined positions
+        for (double scan_yaw : scan_positions_) {
+            // Skip if this is close to current position (already scanned)
+            if (std::abs(scan_yaw - initial_head_yaw_) < 0.1) {
+                continue;
+            }
+
+            // Move head to scan position
+            if (!moveHeadToPosition(scan_yaw, 0.0)) {
+                ROS_WARN("Failed to move head to scan position %.2f", scan_yaw);
+                continue;
+            }
+
+            // Wait for new image (handled in moveHeadToPosition)
+            ros::spinOnce();
+
+            // Detect and store markers at this position
+            detectAndStoreMarkers(scan_yaw);
+
+            if (verbose_) {
+                ROS_INFO("Marker memory size after scanning yaw=%.2f: %zu", scan_yaw, marker_memory_.size());
+            }
+
+            // Stop scanning if we have enough markers
+            if (marker_memory_.size() >= 3) {
+                ROS_INFO("Found sufficient markers (%zu) after scanning", marker_memory_.size());
+                break;
+            }
+        }
+
+        // Restore head to initial position
+        moveHeadToPosition(initial_head_yaw_, 0.0);
+    }
+
+    // Check if we have enough markers
+    if (marker_memory_.size() < 3) {
+        ROS_WARN("Active scanning complete. Only found %zu markers (need 3)", marker_memory_.size());
+        is_scanning_ = false;
+
+        // Publish marker image showing what we found
+        if (!latest_image_.empty()) {
+            cv::Mat output_image = latest_image_.clone();
+            std::vector<int> ids;
+            std::vector<std::vector<cv::Point2f>> corners;
+            for (const auto& m : marker_memory_) {
+                ids.push_back(m.id);
+                corners.push_back(m.corners);
+            }
+            if (!ids.empty()) {
+                cv::aruco::drawDetectedMarkers(output_image, corners, ids);
+            }
+            sensor_msgs::ImagePtr img_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", output_image).toImageMsg();
+            image_pub_.publish(img_msg);
+        }
+
+        return false;
+    }
+
+    // Select best 3 markers from memory
+    std::vector<DetectedMarker> best_markers = selectBestMarkers(3);
+
+    if (best_markers.size() < 3) {
+        ROS_WARN("Could not select 3 valid markers from memory");
+        is_scanning_ = false;
+        return false;
+    }
+
+    // Extract marker IDs and check if they are known landmarks
+    int id1 = best_markers[0].id;
+    int id2 = best_markers[1].id;
+    int id3 = best_markers[2].id;
+
+    if (projected_landmarks_.find(id1) == projected_landmarks_.end() ||
+        projected_landmarks_.find(id2) == projected_landmarks_.end() ||
+        projected_landmarks_.find(id3) == projected_landmarks_.end()) {
+        ROS_WARN("Unknown marker IDs detected: %d, %d, %d", id1, id2, id3);
+        is_scanning_ = false;
+        return false;
+    }
+
+    double x1 = projected_landmarks_[id1].first, y1 = projected_landmarks_[id1].second;
+    double x2 = projected_landmarks_[id2].first, y2 = projected_landmarks_[id2].second;
+    double x3 = projected_landmarks_[id3].first, y3 = projected_landmarks_[id3].second;
+
+    if (verbose_) {
+        ROS_INFO("Using markers from active scanning:");
+        ROS_INFO("Marker 1: ID %d at (%.3f, %.3f) [head_yaw=%.2f]", id1, x1, y1, best_markers[0].head_yaw);
+        ROS_INFO("Marker 2: ID %d at (%.3f, %.3f) [head_yaw=%.2f]", id2, x2, y2, best_markers[1].head_yaw);
+        ROS_INFO("Marker 3: ID %d at (%.3f, %.3f) [head_yaw=%.2f]", id3, x3, y3, best_markers[2].head_yaw);
+    }
+
+    // Check for collinear markers and small landmark triangle area
+    double landmark_triangle_area = std::abs((x2-x1)*(y3-y1) - (y2-y1)*(x3-x1)) / 2.0;
+    if (landmark_triangle_area < 0.5) {
+        ROS_WARN("Landmark triangle area too small (%.3f), rejecting configuration", landmark_triangle_area);
+        is_scanning_ = false;
+        return false;
+    }
+    double cross_product = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+    if (std::abs(cross_product) < 0.01) {
+        ROS_WARN("Markers are nearly collinear, triangulation may be inaccurate");
+        is_scanning_ = false;
+        return false;
+    }
+
+    // Compute angles between markers accounting for head yaw
+    double alpha1 = computeAngleWithHeadYaw(best_markers[0], best_markers[1]);
+    double alpha2 = computeAngleWithHeadYaw(best_markers[1], best_markers[2]);
+
+    // Reject extreme angles
+    if (alpha1 < 5.0 || alpha2 < 5.0 || alpha1 > 120.0 || alpha2 > 120.0) {
+        ROS_WARN("Angles too extreme (alpha1=%.3f, alpha2=%.3f), rejecting configuration", alpha1, alpha2);
+        is_scanning_ = false;
+        return false;
+    }
+
+    if (verbose_) {
+        ROS_INFO("Computed angles: alpha1=%.3f, alpha2=%.3f", alpha1, alpha2);
+    }
+
+    // Continue with triangulation (same as original computeAbsolutePose)
+    // Convert angles to radians for calculation
+    alpha1 = alpha1 * M_PI / 180.0;
+    alpha2 = alpha2 * M_PI / 180.0;
+
+    // Compute possible robot positions using circle-circle intersection
+    // This is the same triangulation algorithm as the original implementation
+
+    // First circle center options (between markers 1 and 2)
+    double xc1_1, yc1_1, xc1_2, yc1_2, r1;
+    int result1 = circle_centre(x1, y1, x2, y2, alpha1, &xc1_1, &yc1_1, &xc1_2, &yc1_2, &r1);
+
+    if (result1 != 1) {
+        ROS_WARN("Failed to compute circle centers for markers 1-2");
+        is_scanning_ = false;
+        return false;
+    }
+
+    // Second circle center options (between markers 2 and 3)
+    double xc2_1, yc2_1, xc2_2, yc2_2, r2;
+    int result2 = circle_centre(x2, y2, x3, y3, alpha2, &xc2_1, &yc2_1, &xc2_2, &yc2_2, &r2);
+
+    if (result2 != 1) {
+        ROS_WARN("Failed to compute circle centers for markers 2-3");
+        is_scanning_ = false;
+        return false;
+    }
+
+    // Try all four combinations of circle centers
+    std::vector<std::pair<double, double>> solutions;
+    double xi, yi, xi_prime, yi_prime;
+
+    // Combination 1: center1_1 and center2_1
+    if (circle_circle_intersection(xc1_1, yc1_1, r1, xc2_1, yc2_1, r2, &xi, &yi, &xi_prime, &yi_prime) == 1) {
+        solutions.push_back({xi, yi});
+        solutions.push_back({xi_prime, yi_prime});
+    }
+
+    // Combination 2: center1_1 and center2_2
+    if (circle_circle_intersection(xc1_1, yc1_1, r1, xc2_2, yc2_2, r2, &xi, &yi, &xi_prime, &yi_prime) == 1) {
+        solutions.push_back({xi, yi});
+        solutions.push_back({xi_prime, yi_prime});
+    }
+
+    // Combination 3: center1_2 and center2_1
+    if (circle_circle_intersection(xc1_2, yc1_2, r1, xc2_1, yc2_1, r2, &xi, &yi, &xi_prime, &yi_prime) == 1) {
+        solutions.push_back({xi, yi});
+        solutions.push_back({xi_prime, yi_prime});
+    }
+
+    // Combination 4: center1_2 and center2_2
+    if (circle_circle_intersection(xc1_2, yc1_2, r1, xc2_2, yc2_2, r2, &xi, &yi, &xi_prime, &yi_prime) == 1) {
+        solutions.push_back({xi, yi});
+        solutions.push_back({xi_prime, yi_prime});
+    }
+
+    if (solutions.empty()) {
+        ROS_WARN("No valid intersection solutions found");
+        is_scanning_ = false;
+        return false;
+    }
+
+    // Score and select best solution (same scoring as original)
+    double best_score = -1e9;
+    std::pair<double, double> best_solution;
+
+    for (const auto& sol : solutions) {
+        double rx = sol.first;
+        double ry = sol.second;
+
+        double score = 0.0;
+
+        // Check distances to all three markers
+        double d1 = std::sqrt((rx - x1)*(rx - x1) + (ry - y1)*(ry - y1));
+        double d2 = std::sqrt((rx - x2)*(rx - x2) + (ry - y2)*(ry - y2));
+        double d3 = std::sqrt((rx - x3)*(rx - x3) + (ry - y3)*(ry - y3));
+
+        // Prefer solutions where distances are reasonable (2-10m typically)
+        if (d1 > 2.0 && d1 < 10.0) score += 10;
+        if (d2 > 2.0 && d2 < 10.0) score += 10;
+        if (d3 > 2.0 && d3 < 10.0) score += 10;
+
+        // Penalize extreme distances
+        if (d1 < 1.0 || d1 > 15.0) score -= 20;
+        if (d2 < 1.0 || d2 > 15.0) score -= 20;
+        if (d3 < 1.0 || d3 > 15.0) score -= 20;
+
+        // Compute triangle area formed by robot and markers
+        double area12 = std::abs((x2-rx)*(y1-ry) - (x1-rx)*(y2-ry)) / 2.0;
+        double area23 = std::abs((x3-rx)*(y2-ry) - (x2-rx)*(y3-ry)) / 2.0;
+        double area13 = std::abs((x3-rx)*(y1-ry) - (x1-rx)*(y3-ry)) / 2.0;
+
+        // Prefer larger triangulation areas (more stable)
+        score += area12 + area23 + area13;
+
+        if (score > best_score) {
+            best_score = score;
+            best_solution = sol;
+        }
+    }
+
+    double robot_x = best_solution.first;
+    double robot_y = best_solution.second;
+
+    if (verbose_) {
+        ROS_INFO("Selected robot position: (%.3f, %.3f) with score %.3f", robot_x, robot_y, best_score);
+    }
+
+    // Compute robot orientation using the first marker
+    // Use the marker's stored head yaw for accurate angle computation
+    double marker_angle_cam = std::atan2(best_markers[0].center.first - cx_, fx_);
+    double marker_angle_world = std::atan2(y1 - robot_y, x1 - robot_x);
+    double robot_theta = marker_angle_world - marker_angle_cam - best_markers[0].head_yaw - (346.0 * M_PI / 180.0);
+    robot_theta = angles::normalize_angle(robot_theta);
+
+    if (verbose_) {
+        ROS_INFO("Computed robot orientation: %.3f rad (%.1f deg)", robot_theta, robot_theta * 180.0 / M_PI);
+    }
+
+    // Update pose
+    baseline_pose_.x = robot_x;
+    baseline_pose_.y = robot_y;
+    baseline_pose_.theta = robot_theta;
+    current_pose_ = baseline_pose_;
+    last_absolute_pose_time_ = ros::Time::now();
+    last_odom_pose_ = current_pose_;
+
+    publishPose();
+
+    // Publish marker visualization
+    if (!latest_image_.empty()) {
+        cv::Mat output_image = latest_image_.clone();
+        std::vector<int> ids;
+        std::vector<std::vector<cv::Point2f>> corners;
+        for (const auto& m : best_markers) {
+            ids.push_back(m.id);
+            corners.push_back(m.corners);
+        }
+        if (!ids.empty()) {
+            cv::aruco::drawDetectedMarkers(output_image, corners, ids);
+        }
+        sensor_msgs::ImagePtr img_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", output_image).toImageMsg();
+        image_pub_.publish(img_msg);
+    }
+
+    is_scanning_ = false;
+    ROS_INFO("Active scanning localization successful!");
+    return true;
 }
