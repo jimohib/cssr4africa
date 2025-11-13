@@ -168,6 +168,12 @@ RobotLocalizationNode::RobotLocalizationNode() : nh_("~"), it_(nh_), tf_buffer_(
     topics_file_ = package_path + config.get("topicsFile", "").asString();
     camera_info_file_ = package_path + config.get("cameraInfoFile", "").asString();
 
+    // Configure verboseMode on launch
+    bool verbose_override = false;
+    if (nh_.getParam("verboseMode", verbose_override)) {
+        verbose_ = verbose_override;
+    }
+
     // Load active scanning parameters
     enable_active_scanning_ = config.get("enableActiveScanning", true).asBool();
     scan_timeout_ = config.get("scanTimeout", 2.0).asDouble();

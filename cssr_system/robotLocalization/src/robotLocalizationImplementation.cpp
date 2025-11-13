@@ -666,7 +666,7 @@ bool RobotLocalizationNode::computeAbsolutePose() {
         current_pose_ = baseline_pose_;
         last_absolute_pose_time_ = ros::Time::now();
 
-        // Alternate update pose
+        // Update odom pose
         initial_robot_x = xr;
         initial_robot_y = yr;
         initial_robot_theta = theta;
@@ -712,45 +712,7 @@ bool RobotLocalizationNode::computeAbsolutePoseWithDepth() {
         return false;
     }
 
-
-    // // Sort by position using indices
-    // if (!marker_ids.empty()) {
-    //     // Create index vector [0, 1, 2, 3, ...]
-    //     std::vector<size_t> indices(marker_ids.size());
-    //     std::iota(indices.begin(), indices.end(), 0);
-        
-    //     // Sort indices by marker center x-coordinate
-    //     std::sort(indices.begin(), indices.end(), 
-    //             [&marker_corners, &marker_ids](size_t a, size_t b) {
-    //                 float center_a_x = (marker_corners[a][0].x + marker_corners[a][1].x + 
-    //                                     marker_corners[a][2].x + marker_corners[a][3].x) / 4.0f;
-    //                 float center_b_x = (marker_corners[b][0].x + marker_corners[b][1].x + 
-    //                                     marker_corners[b][2].x + marker_corners[b][3].x) / 4.0f;
-                    
-    //                 // Primary sort: x-coordinate  
-    //                 if (std::abs(center_a_x - center_b_x) > 1.0f) {
-    //                     return center_a_x < center_b_x;
-    //                 }
-                    
-    //                 // Secondary sort: marker ID (for consistent ordering)
-    //                 return marker_ids[a] < marker_ids[b];
-    //             });
-        
-    //     // Create sorted copies using the sorted indices
-    //     std::vector<int> sorted_ids;
-    //     std::vector<std::vector<cv::Point2f>> sorted_corners;
-        
-    //     for (size_t idx : indices) {
-    //         sorted_ids.push_back(marker_ids[idx]);
-    //         sorted_corners.push_back(marker_corners[idx]);
-    //     }
-        
-    //     // Replace original vectors
-    //     marker_ids = std::move(sorted_ids);
-    //     marker_corners = std::move(sorted_corners);
-    // }
-
-    // Sort by marker ids using indices
+    // Sort by marker ids using indices for consistent ordering (alternatively is to sort by position or x-coordinate)
     if (!marker_ids.empty()) {
         // Create index vector and sort indices instead
         std::vector<size_t> indices(marker_ids.size());
@@ -877,7 +839,7 @@ bool RobotLocalizationNode::computeAbsolutePoseWithDepth() {
     current_pose_ = baseline_pose_;
     last_absolute_pose_time_ = ros::Time::now();
 
-    // Alternate update pose
+    // Update odom pose
     initial_robot_x = xr;
     initial_robot_y = yr;
     initial_robot_theta = theta;
@@ -1582,7 +1544,15 @@ bool RobotLocalizationNode::computeAbsolutePoseWithActiveScanning() {
     last_absolute_pose_time_ = ros::Time::now();
     last_odom_pose_ = current_pose_;
 
-    publishPose();
+    // Update odom pose
+    initial_robot_x = robot_x;
+    initial_robot_y = robot_y;
+    initial_robot_theta = robot_theta;
+    adjustment_x_ = initial_robot_x - odom_x_;
+    adjustment_y_ = initial_robot_y - odom_y_;
+    adjustment_theta_ = initial_robot_theta - odom_theta_;
+
+    ROS_INFO("ROBOT POSE: x = %.3f, y = %.3f, theta = %.3f degrees", robot_x, robot_y, robot_theta * 180.0 / M_PI);
 
     // Publish marker visualization
     if (!latest_image_.empty()) {
