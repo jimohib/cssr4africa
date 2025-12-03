@@ -1238,25 +1238,62 @@ std::vector<DetectedMarker> RobotLocalizationNode::selectBestMarkers(int count) 
 
 // Compute angle between two markers accounting for head yaw difference
 double RobotLocalizationNode::computeAngleWithHeadYaw(const DetectedMarker& m1, const DetectedMarker& m2) {
-    // Get pixel coordinates of marker centers
-    double cx1 = m1.center.first;
-    double cy1 = m1.center.second;
-    double cx2 = m2.center.first;
-    double cy2 = m2.center.second;
+    // Convert pixel coordinates to normalized camera coordinates
+    double x1_norm = (m1.center.first - cx_) / fx_;
+    double y1_norm = (m1.center.second - cy_) / fy_;
+    double x2_norm = (m2.center.first - cx_) / fx_;
+    double y2_norm = (m2.center.second - cy_) / fy_;
 
-    // Convert pixel coordinates to camera angles (radians)
-    double angle1_cam = std::atan2(cx1 - cx_, fx_);
-    double angle2_cam = std::atan2(cx2 - cx_, fx_);
+    // Create 3D direction vectors in camera frame (Z=1.0 for unit distance)
+    cv::Vec3d dir1_cam(x1_norm, y1_norm, 1.0);
+    cv::Vec3d dir2_cam(x2_norm, y2_norm, 1.0);
 
-    // Add head yaw to get world frame angles
-    double angle1_world = angle1_cam + m1.head_yaw;
-    double angle2_world = angle2_cam + m2.head_yaw;
+    // Normalize the vectors
+    dir1_cam = dir1_cam / cv::norm(dir1_cam);
+    dir2_cam = dir2_cam / cv::norm(dir2_cam);
 
-    // Compute angular difference
-    double angle_diff = std::abs(angle1_world - angle2_world);
+    // Transform direction vectors from camera frame to robot body frame
+    // accounting for head yaw rotation
+    // Rotation around vertical axis (Y in camera frame):
+    // x_body = x_cam * cos(yaw) + z_cam * sin(yaw)
+    // y_body = y_cam (unchanged)
+    // z_body = -x_cam * sin(yaw) + z_cam * cos(yaw)
+
+    double cos_yaw1 = std::cos(m1.head_yaw);
+    double sin_yaw1 = std::sin(m1.head_yaw);
+    cv::Vec3d dir1_body(
+        dir1_cam[0] * cos_yaw1 + dir1_cam[2] * sin_yaw1,
+        dir1_cam[1],
+        -dir1_cam[0] * sin_yaw1 + dir1_cam[2] * cos_yaw1
+    );
+
+    double cos_yaw2 = std::cos(m2.head_yaw);
+    double sin_yaw2 = std::sin(m2.head_yaw);
+    cv::Vec3d dir2_body(
+        dir2_cam[0] * cos_yaw2 + dir2_cam[2] * sin_yaw2,
+        dir2_cam[1],
+        -dir2_cam[0] * sin_yaw2 + dir2_cam[2] * cos_yaw2
+    );
+
+    // Normalize the transformed vectors
+    dir1_body = dir1_body / cv::norm(dir1_body);
+    dir2_body = dir2_body / cv::norm(dir2_body);
+
+    // Compute angle using dot product
+    double dot_product = dir1_body.dot(dir2_body);
+
+    // Clamp to avoid numerical errors in acos
+    if (dot_product > 1.0) dot_product = 1.0;
+    if (dot_product < -1.0) dot_product = -1.0;
+
+    double angle_rad = std::acos(dot_product);
+
+    if (verbose_) {
+        ROS_INFO("Angle between markers (accounting for head yaw): %.2f degrees", angle_rad * 180.0 / M_PI);
+    }
 
     // Convert to degrees
-    return angle_diff * 180.0 / M_PI;
+    return angle_rad * 180.0 / M_PI;
 }
 
 // Compute absolute pose with active head scanning
@@ -1383,12 +1420,10 @@ bool RobotLocalizationNode::computeAbsolutePoseWithActiveScanning() {
     double x2 = projected_landmarks_[id2].first, y2 = projected_landmarks_[id2].second;
     double x3 = projected_landmarks_[id3].first, y3 = projected_landmarks_[id3].second;
 
-    if (verbose_) {
-        ROS_INFO("Using markers from active scanning:");
-        ROS_INFO("Marker 1: ID %d at (%.3f, %.3f) [head_yaw=%.2f]", id1, x1, y1, best_markers[0].head_yaw);
-        ROS_INFO("Marker 2: ID %d at (%.3f, %.3f) [head_yaw=%.2f]", id2, x2, y2, best_markers[1].head_yaw);
-        ROS_INFO("Marker 3: ID %d at (%.3f, %.3f) [head_yaw=%.2f]", id3, x3, y3, best_markers[2].head_yaw);
-    }
+    ROS_INFO("Using found ArUco markers:");
+    ROS_INFO("Marker 1: ID %d at (%.3f, %.3f) [head_yaw=%.2f]", id1, x1, y1, best_markers[0].head_yaw);
+    ROS_INFO("Marker 2: ID %d at (%.3f, %.3f) [head_yaw=%.2f]", id2, x2, y2, best_markers[1].head_yaw);
+    ROS_INFO("Marker 3: ID %d at (%.3f, %.3f) [head_yaw=%.2f]", id3, x3, y3, best_markers[2].head_yaw);
 
     // Check for collinear markers and small landmark triangle area
     double landmark_triangle_area = std::abs((x2-x1)*(y3-y1) - (y2-y1)*(x3-x1)) / 2.0;
@@ -1415,9 +1450,7 @@ bool RobotLocalizationNode::computeAbsolutePoseWithActiveScanning() {
         return false;
     }
 
-    if (verbose_) {
-        ROS_INFO("Computed angles: alpha1=%.3f, alpha2=%.3f", alpha1, alpha2);
-    }
+    ROS_INFO("Computed angles with head yaw compensation: alpha1=%.3f°, alpha2=%.3f°", alpha1, alpha2);
 
     // Continue with triangulation (same as original computeAbsolutePose)
     // Convert angles to radians for calculation
@@ -1523,10 +1556,6 @@ bool RobotLocalizationNode::computeAbsolutePoseWithActiveScanning() {
     double robot_x = best_solution.first;
     double robot_y = best_solution.second;
 
-    if (verbose_) {
-        ROS_INFO("Selected robot position: (%.3f, %.3f) with score %.3f", robot_x, robot_y, best_score);
-    }
-
     // Compute robot orientation using the first marker
     // Use the marker's stored head yaw for accurate angle computation
     double marker_angle_cam = std::atan2(best_markers[0].center.first - cx_, fx_);
@@ -1534,9 +1563,7 @@ bool RobotLocalizationNode::computeAbsolutePoseWithActiveScanning() {
     double robot_theta = marker_angle_world - marker_angle_cam - best_markers[0].head_yaw - (346.0 * M_PI / 180.0);
     robot_theta = angles::normalize_angle(robot_theta);
 
-    if (verbose_) {
-        ROS_INFO("Computed robot orientation: %.3f rad (%.1f deg)", robot_theta, robot_theta * 180.0 / M_PI);
-    }
+    ROS_INFO("ROBOT POSE: x = %.3f, y = %.3f, theta = %.3f degrees", robot_x, robot_y, robot_theta * 180.0 / M_PI);
 
     // Update pose
     baseline_pose_.x = robot_x;
@@ -1565,6 +1592,6 @@ bool RobotLocalizationNode::computeAbsolutePoseWithActiveScanning() {
     }
 
     is_scanning_ = false;
-    ROS_INFO("Active scanning localization successful!");
+    ROS_INFO("Absolute localization successful!");
     return true;
 }
