@@ -1146,6 +1146,21 @@ void RobotLocalizationNode::detectAndStoreMarkers(double current_head_yaw) {
                             marker_corners[i][2].y + marker_corners[i][3].y) / 4.0;
                 stored.center = {cx, cy};
 
+                // Update body-frame direction
+                double x_norm = (cx - cx_) / fx_;
+                double y_norm = (cy - cy_) / fy_;
+                cv::Vec3d dir_cam(x_norm, y_norm, 1.0);
+                dir_cam = dir_cam / cv::norm(dir_cam);
+
+                double cos_yaw = std::cos(current_head_yaw);
+                double sin_yaw = std::sin(current_head_yaw);
+                stored.direction_body = cv::Vec3d(
+                    dir_cam[2] * sin_yaw + dir_cam[0] * cos_yaw,
+                    dir_cam[1],
+                    dir_cam[2] * cos_yaw - dir_cam[0] * sin_yaw
+                );
+                stored.direction_body = stored.direction_body / cv::norm(stored.direction_body);
+
                 found = true;
                 break;
             }
@@ -1166,10 +1181,35 @@ void RobotLocalizationNode::detectAndStoreMarkers(double current_head_yaw) {
                         marker_corners[i][2].y + marker_corners[i][3].y) / 4.0;
             marker.center = {cx, cy};
 
+            // Convert to normalized camera coordinates
+            double x_norm = (cx - cx_) / fx_;
+            double y_norm = (cy - cy_) / fy_;
+
+            // Create 3D direction vector in camera frame
+            cv::Vec3d dir_cam(x_norm, y_norm, 1.0);
+            dir_cam = dir_cam / cv::norm(dir_cam);
+
+            // Transform to robot body frame
+            // Simple 2D rotation in horizontal plane (camera X-Z plane)
+            // When head turns left (positive yaw), camera rotates left
+            // Camera Z (forward) becomes body direction at angle head_yaw
+            double cos_yaw = std::cos(current_head_yaw);
+            double sin_yaw = std::sin(current_head_yaw);
+
+            // Rotation: camera forward (Z) and camera right (X) to body frame
+            marker.direction_body = cv::Vec3d(
+                dir_cam[2] * sin_yaw + dir_cam[0] * cos_yaw,  // body X (forward)
+                dir_cam[1],                                     // body Y (left/vertical)
+                dir_cam[2] * cos_yaw - dir_cam[0] * sin_yaw   // body Z (up)
+            );
+            marker.direction_body = marker.direction_body / cv::norm(marker.direction_body);
+
             marker_memory_.push_back(marker);
 
             if (verbose_) {
-                ROS_INFO("Stored new marker ID %d at head yaw %.2f", id, current_head_yaw);
+                ROS_INFO("Stored new marker ID %d at head yaw %.2f rad, body direction: [%.3f, %.3f, %.3f]",
+                         id, current_head_yaw,
+                         marker.direction_body[0], marker.direction_body[1], marker.direction_body[2]);
             }
         }
     }
@@ -1238,46 +1278,10 @@ std::vector<DetectedMarker> RobotLocalizationNode::selectBestMarkers(int count) 
 
 // Compute angle between two markers accounting for head yaw difference
 double RobotLocalizationNode::computeAngleWithHeadYaw(const DetectedMarker& m1, const DetectedMarker& m2) {
-    // Convert pixel coordinates to normalized camera coordinates
-    double x1_norm = (m1.center.first - cx_) / fx_;
-    double y1_norm = (m1.center.second - cy_) / fy_;
-    double x2_norm = (m2.center.first - cx_) / fx_;
-    double y2_norm = (m2.center.second - cy_) / fy_;
-
-    // Create 3D direction vectors in camera frame (Z=1.0 for unit distance)
-    cv::Vec3d dir1_cam(x1_norm, y1_norm, 1.0);
-    cv::Vec3d dir2_cam(x2_norm, y2_norm, 1.0);
-
-    // Normalize the vectors
-    dir1_cam = dir1_cam / cv::norm(dir1_cam);
-    dir2_cam = dir2_cam / cv::norm(dir2_cam);
-
-    // Transform direction vectors from camera frame to robot body frame
-    // accounting for head yaw rotation
-    // Rotation around vertical axis (Y in camera frame):
-    // x_body = x_cam * cos(yaw) + z_cam * sin(yaw)
-    // y_body = y_cam (unchanged)
-    // z_body = -x_cam * sin(yaw) + z_cam * cos(yaw)
-
-    double cos_yaw1 = std::cos(m1.head_yaw);
-    double sin_yaw1 = std::sin(m1.head_yaw);
-    cv::Vec3d dir1_body(
-        dir1_cam[0] * cos_yaw1 + dir1_cam[2] * sin_yaw1,
-        dir1_cam[1],
-        -dir1_cam[0] * sin_yaw1 + dir1_cam[2] * cos_yaw1
-    );
-
-    double cos_yaw2 = std::cos(m2.head_yaw);
-    double sin_yaw2 = std::sin(m2.head_yaw);
-    cv::Vec3d dir2_body(
-        dir2_cam[0] * cos_yaw2 + dir2_cam[2] * sin_yaw2,
-        dir2_cam[1],
-        -dir2_cam[0] * sin_yaw2 + dir2_cam[2] * cos_yaw2
-    );
-
-    // Normalize the transformed vectors
-    dir1_body = dir1_body / cv::norm(dir1_body);
-    dir2_body = dir2_body / cv::norm(dir2_body);
+    // Use pre-computed body-frame directions
+    // These were already transformed when the markers were detected and stored
+    const cv::Vec3d& dir1_body = m1.direction_body;
+    const cv::Vec3d& dir2_body = m2.direction_body;
 
     // Compute angle using dot product
     double dot_product = dir1_body.dot(dir2_body);
@@ -1287,13 +1291,18 @@ double RobotLocalizationNode::computeAngleWithHeadYaw(const DetectedMarker& m1, 
     if (dot_product < -1.0) dot_product = -1.0;
 
     double angle_rad = std::acos(dot_product);
+    double angle_deg = angle_rad * 180.0 / M_PI;
 
     if (verbose_) {
-        ROS_INFO("Angle between markers (accounting for head yaw): %.2f degrees", angle_rad * 180.0 / M_PI);
+        ROS_INFO("Angle between markers (using body-frame directions): %.2f degrees", angle_deg);
+        ROS_INFO("  Marker 1 body dir: [%.3f, %.3f, %.3f] at head_yaw=%.2f",
+                 dir1_body[0], dir1_body[1], dir1_body[2], m1.head_yaw);
+        ROS_INFO("  Marker 2 body dir: [%.3f, %.3f, %.3f] at head_yaw=%.2f",
+                 dir2_body[0], dir2_body[1], dir2_body[2], m2.head_yaw);
     }
 
     // Convert to degrees
-    return angle_rad * 180.0 / M_PI;
+    return angle_deg;
 }
 
 // Compute absolute pose with active head scanning

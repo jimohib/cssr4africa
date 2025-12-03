@@ -66,6 +66,7 @@ struct DetectedMarker {
     double head_yaw;
     ros::Time timestamp;
     std::pair<double, double> center;  // Pre-computed center for efficiency
+    cv::Vec3d direction_body;  // Direction vector in robot body frame
 };
 
 // Robot localization class

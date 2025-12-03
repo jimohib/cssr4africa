@@ -1,5 +1,5 @@
 {
-  "verboseMode": false,
+  "verboseMode": true,
   "camera": "RGBRealSense",
   "depthCamera": "DepthRealSense",
   "useDepth": false,
