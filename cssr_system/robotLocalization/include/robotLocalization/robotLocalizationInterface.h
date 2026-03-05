@@ -155,11 +155,15 @@ private:
     bool setPoseCallback(cssr_system::setPose::Request& req, cssr_system::setPose::Response& res);
     bool resetPoseCallback(cssr_system::resetPose::Request& req, cssr_system::resetPose::Response& res);
 
+    // Triangulation method
+    bool triangulateRobotPosition(double x1, double y1, double x2, double y2, double x3, double y3, double alpha1, double alpha2, double &xr, double &yr);
+
     // Absolute localization methods
     bool computeAbsolutePose();
     bool computeAbsolutePoseWithDepth();
 
     // Active scanning methods
+    std::pair<double, double> computeMarkerBearing(const DetectedMarker& marker);
     bool computeAbsolutePoseWithActiveScanning();
     bool moveHeadToPosition(double yaw, double pitch = 0.0);
     void detectAndStoreMarkers(double current_head_yaw);
